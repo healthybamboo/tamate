@@ -1,0 +1,28 @@
+# このファイルは静的解析の設定。詳細は https://dart.dev/tools/analysis を参照。
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  plugins:
+    # riverpod_lint を有効にする。CLI からは `dart run custom_lint` で実行。
+    - custom_lint
+  errors:
+    # 未使用 import などはエラー扱いにして早めに落とす。
+    unused_import: error
+    unused_local_variable: error
+  exclude:
+    - lib/l10n/generated/**
+
+linter:
+  rules:
+    # 単一引用符に統一する。
+    - prefer_single_quotes
+    # 戻り値の型は明示する。
+    - always_declare_return_types
+    # const を付けられる箇所は付ける（リビルド削減）。
+    - prefer_const_constructors
+    - prefer_const_declarations
+    # lib 内では相対 import に統一する。
+    - prefer_relative_imports
+    # BuildContext を非同期処理をまたいで使わない。
+    - use_build_context_synchronously

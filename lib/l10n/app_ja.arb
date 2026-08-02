@@ -1,0 +1,16 @@
+{
+  "@@locale": "ja",
+  "appTitle": "tamate",
+  "memoListTitle": "メモ",
+  "memoListEmpty": "まだメモがありません",
+  "memoNewTitle": "新規メモ",
+  "memoEditTitle": "メモを編集",
+  "memoTitleLabel": "タイトル",
+  "memoBodyLabel": "本文",
+  "memoUntitled": "無題のメモ",
+  "actionSave": "保存",
+  "actionDelete": "削除",
+  "actionCancel": "キャンセル",
+  "deleteConfirmMessage": "このメモを削除しますか？",
+  "errorGeneric": "エラーが発生しました"
+}

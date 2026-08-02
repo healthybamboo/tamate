@@ -1,0 +1,16 @@
+{
+  "@@locale": "en",
+  "appTitle": "tamate",
+  "memoListTitle": "Memos",
+  "memoListEmpty": "No memos yet",
+  "memoNewTitle": "New memo",
+  "memoEditTitle": "Edit memo",
+  "memoTitleLabel": "Title",
+  "memoBodyLabel": "Body",
+  "memoUntitled": "Untitled memo",
+  "actionSave": "Save",
+  "actionDelete": "Delete",
+  "actionCancel": "Cancel",
+  "deleteConfirmMessage": "Delete this memo?",
+  "errorGeneric": "Something went wrong"
+}
