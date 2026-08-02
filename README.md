@@ -44,7 +44,7 @@ lib/
 │       ├── data/              # 永続化。interface + 実装
 │       ├── application/       # 状態と操作（Riverpod Notifier）
 │       └── presentation/      # 画面・ウィジェット
-└── l10n/                      # .arb と生成物（generated/）
+└── l10n/                      # .arb ファイル（generated/ は生成物なので追跡しない）
 ```
 
 依存の向きは `presentation → application → data → domain` の一方向。domain は他の層を参照しない。

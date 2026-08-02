@@ -19,8 +19,12 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Generate localizations
+        run: flutter gen-l10n
+
+      # 生成物は追跡していないため、Git 管理下の .dart のみを対象にする。
       - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed lib test
+        run: git ls-files '*.dart' | xargs dart format --output=none --set-exit-if-changed
 
       - name: Analyze
         run: flutter analyze

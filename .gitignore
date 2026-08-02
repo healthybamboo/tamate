@@ -37,6 +37,9 @@ coverage/
 # dotenv environment variables file
 .env*
 
+# gen-l10n の生成物。pubspec の generate: true により pub get / build 時に再生成される。
+/lib/l10n/generated/
+
 # Symbolication related
 app.*.symbols
 
