@@ -5,7 +5,6 @@ import 'package:tamate/features/memo/application/memo_list_notifier.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 import 'package:tamate/features/memo/domain/memo_lock_state.dart';
-import 'package:tamate/features/memo/domain/unlock_policy.dart';
 import 'package:tamate/features/memo/domain/unlock_rule.dart';
 
 import '../../support/fakes.dart';
