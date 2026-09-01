@@ -2,70 +2,39 @@ import 'package:meta/meta.dart';
 
 /// 待機の経過。
 ///
-/// 計測が進むのは待機画面を見ている間だけなので、経過時間そのもの（[elapsed]）と、
-/// 進行中ならその開始時刻（[resumedAt]）を持つ。時刻の差ではなく合計で持つのは、
-/// 止めたり再開したりを繰り返しても破綻しないようにするため。
+/// 待機画面を離れた時点で捨てるので、開始時刻さえあれば残りは計算できる。
+/// 止めて再開する余地を残すと「ちょっと離れる」ができてしまうため、持たない。
 @immutable
 class MemoWait {
-  const MemoWait({this.elapsed = Duration.zero, this.resumedAt});
-
-  /// 進行中の待機を [now] から始める。
-  factory MemoWait.startedAt(DateTime now) => MemoWait(resumedAt: now);
+  const MemoWait(this.startedAt);
 
   factory MemoWait.fromJson(Map<String, dynamic> json) {
-    final seconds = json['elapsedSeconds'];
-    final resumedAt = json['resumedAt'];
+    final startedAt = json['startedAt'];
     return MemoWait(
-      elapsed: Duration(seconds: seconds is int && seconds > 0 ? seconds : 0),
-      resumedAt:
-          resumedAt is String ? DateTime.tryParse(resumedAt)?.toLocal() : null,
+      startedAt is String
+          ? DateTime.tryParse(startedAt)?.toLocal() ?? DateTime(0)
+          : DateTime(0),
     );
   }
 
-  /// 画面を見ていた時間の合計。進行中のぶんは含まない。
-  final Duration elapsed;
-
-  /// 進行中ならその開始時刻。止まっていれば null。
-  final DateTime? resumedAt;
-
-  bool get isRunning => resumedAt != null;
+  /// 待機を始めた時刻。
+  final DateTime startedAt;
 
   /// [now] 時点での経過。
   Duration elapsedAt(DateTime now) {
-    final startedAt = resumedAt;
-    if (startedAt == null) {
-      return elapsed;
-    }
-    final running = now.difference(startedAt);
-    return running.isNegative ? elapsed : elapsed + running;
+    final elapsed = now.difference(startedAt);
+    return elapsed.isNegative ? Duration.zero : elapsed;
   }
 
-  /// 計測を再開する。
-  MemoWait resume(DateTime now) =>
-      isRunning ? this : MemoWait(elapsed: elapsed, resumedAt: now);
-
-  /// 計測を止める。ここまでの経過は残す。
-  MemoWait pause(DateTime now) =>
-      isRunning ? MemoWait(elapsed: elapsedAt(now)) : this;
-
-  /// 進行中だったぶんを捨てて止める。
-  ///
-  /// アプリが落とされた場合に使う。落ちている間は待っていないので、
-  /// 最後に止まった時点までを経過とする。
-  MemoWait dropRunning() => isRunning ? MemoWait(elapsed: elapsed) : this;
-
   Map<String, dynamic> toJson() => {
-        'elapsedSeconds': elapsed.inSeconds,
-        'resumedAt': resumedAt?.toUtc().toIso8601String(),
+        'startedAt': startedAt.toUtc().toIso8601String(),
       };
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is MemoWait &&
-          other.elapsed == elapsed &&
-          other.resumedAt == resumedAt;
+      other is MemoWait && other.startedAt == startedAt;
 
   @override
-  int get hashCode => Object.hash(elapsed, resumedAt);
+  int get hashCode => startedAt.hashCode;
 }

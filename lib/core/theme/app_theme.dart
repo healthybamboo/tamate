@@ -82,7 +82,11 @@ abstract final class AppTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
-        titleTextStyle: textTheme.titleLarge,
+        // 画面の名前は控えめにしすぎない。ここが小さいと全体が締まらない。
+        titleTextStyle: textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
+        ),
         systemOverlayStyle:
             isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       ),
@@ -183,7 +187,11 @@ abstract final class AppTheme {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
-        titleTextStyle: textTheme.titleLarge,
+        // 画面の名前は控えめにしすぎない。ここが小さいと全体が締まらない。
+        titleTextStyle: textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
+        ),
         contentTextStyle: textTheme.bodyMedium,
       ),
       snackBarTheme: SnackBarThemeData(

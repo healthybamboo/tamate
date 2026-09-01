@@ -25,15 +25,20 @@ class MemoListPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 72,
+        toolbarHeight: 76,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(l10n.memoListTitle),
+            Text(
+              l10n.memoListTitle,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
             if (_summary(l10n, memos.valueOrNull, ref) case final summary?)
               Padding(
-                padding: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   summary,
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -214,13 +219,9 @@ class _MemoCard extends ConsumerWidget {
   /// 状態の下に出す一行。ロック中は、開いたら何が待っているかを見せる。
   String _detail(AppLocalizations l10n, MemoLockState state) => switch (state) {
         MemoLocked() => _lockedDetail(l10n),
-        MemoWaiting(:final remaining, :final running) => switch (remaining) {
-            null => running ? l10n.stateWaiting : l10n.waitingPaused,
-            final left when running =>
-              l10n.waitingRemaining(formatRemaining(l10n, left)),
-            final left =>
-              l10n.waitingRemainingPaused(formatRemaining(l10n, left)),
-          },
+        MemoWaiting(:final remaining) => remaining == null
+            ? l10n.stateWaiting
+            : l10n.waitingRemaining(formatRemaining(l10n, remaining)),
         MemoAwaitingAnswers() => l10n.stateAwaitingAnswers,
         MemoUnlocked(:final remaining) =>
           l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
@@ -258,8 +259,8 @@ class _StateBadge extends StatelessWidget {
           scheme.surfaceContainerHighest,
           scheme.onSurfaceVariant,
         ),
-      MemoWaiting(:final running) => (
-          running ? l10n.stateWaiting : l10n.waitingPaused,
+      MemoWaiting() => (
+          l10n.stateWaiting,
           scheme.primaryContainer,
           scheme.onPrimaryContainer,
         ),
@@ -293,8 +294,7 @@ class _StateBadge extends StatelessWidget {
 
   IconData _icon(MemoLockState state) => switch (state) {
         MemoLocked() => Icons.lock_outline,
-        MemoWaiting(:final running) =>
-          running ? Icons.hourglass_bottom : Icons.pause_circle_outline,
+        MemoWaiting() => Icons.hourglass_bottom,
         MemoAwaitingAnswers() => Icons.help_outline,
         MemoUnlocked() => Icons.lock_open_outlined,
       };

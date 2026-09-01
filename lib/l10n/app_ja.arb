@@ -17,7 +17,6 @@
   "actionStopWaiting": "待つのをやめる",
   "actionClose": "閉じる",
   "deleteConfirmMessage": "このメモを削除しますか？",
-  "stopWaitingConfirmMessage": "待つのをやめると、次に開くときは最初から待ち直しになります。やめますか？",
   "errorGeneric": "エラーが発生しました",
   "memoNotFound": "メモが見つかりません",
   "stateLocked": "ロック中",
@@ -160,16 +159,7 @@
   },
   "generateCodeAction": "4桁のコードを生成",
   "generateCodeNotice": "先に設定したいところへ入力してください。保存すると、読み直すには待つことになります",
-  "waitingPauseNotice": "この画面を離れると待機は止まります",
-  "waitingPaused": "停止中",
-  "waitingRemainingPaused": "あと{remaining}・停止中",
-  "@waitingRemainingPaused": {
-    "placeholders": {
-      "remaining": {
-        "type": "String"
-      }
-    }
-  },
+  "waitingPauseNotice": "この画面を離れると、待機は最初からやり直しになります",
   "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録",
   "stateAwaitingAnswers": "問いに答える",
   "questionProgress": "{current} / {total}",

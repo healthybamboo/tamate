@@ -55,9 +55,9 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
           return;
         }
         _foreground = foreground;
-        // 背面に回ったら待機は止める。戻ってきたらビルドで再開する。
+        // 背面に回ったら待機は捨てる。ちょっと離れる、を作らないため。
         if (!foreground) {
-          unawaited(_notifier.pauseWaiting(widget.memoId));
+          unawaited(_notifier.cancelWaiting(widget.memoId));
         } else {
           setState(() {});
         }
@@ -67,14 +67,14 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
   @override
   void dispose() {
-    // 画面を離れたら待機は止まる。経過は残るので続きから待てる。
+    // 画面を離れたら待機は最初からやり直しになる。
     // 破棄はウィジェットツリーの更新中に起きるので、フレームのあとに回す。
     final notifier = _notifier;
     final memoId = widget.memoId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // アプリごと畳まれていれば保存先はもう無い。その場合も次の起動で
-      // 進行中だったぶんは捨てるので、ここで諦めて構わない。
-      unawaited(notifier.pauseWaiting(memoId).catchError((Object _) {}));
+      // 待機は捨てられるので、ここで諦めて構わない。
+      unawaited(notifier.cancelWaiting(memoId).catchError((Object _) {}));
     });
     _lifecycleListener.dispose();
     super.dispose();
@@ -100,8 +100,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
     if (lockState.canRead && memo.unlockedAt == null) {
       _settleUnlock();
-    } else if (lockState is MemoWaiting && !lockState.running && _foreground) {
-      _resumeWaiting();
     }
 
     return Scaffold(
@@ -171,15 +169,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     });
   }
 
-  /// 待機の再開。画面を見ている間だけ進む。
-  void _resumeWaiting() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _foreground) {
-        unawaited(_notifier.resumeWaiting(widget.memoId));
-      }
-    });
-  }
-
   Future<void> _open(Memo memo) async {
     _settled = false;
     await _notifier.startWaiting(memo.id);
@@ -220,13 +209,9 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     context.go(AppRoutes.memoList);
   }
 
+  /// 待つのをやめる。画面を離れるのと同じで、経過は捨てる。
   Future<void> _stopWaiting() async {
-    final l10n = AppLocalizations.of(context);
-    final confirmed = await _confirm(l10n.stopWaitingConfirmMessage);
-    if (!confirmed) {
-      return;
-    }
-    await ref.read(memoListProvider.notifier).cancelWaiting(widget.memoId);
+    await _notifier.cancelWaiting(widget.memoId);
   }
 
   Future<void> _delete() async {

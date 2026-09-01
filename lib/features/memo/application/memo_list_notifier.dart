@@ -19,9 +19,8 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
   @override
   Future<List<Memo>> build() async {
     final memos = await _repository.fetchAll();
-    // 前回アプリが落ちたときに進行中だった待機は、そのぶんを捨てて止める。
-    // 落ちている間は待っていないので、経過に入れてはいけない。
-    return _sorted([for (final memo in memos) memo.dropRunningWait()]);
+    // 前回の待機は捨てる。アプリを閉じている間は待っていない。
+    return _sorted([for (final memo in memos) memo.dropWait()]);
   }
 
   /// 保存内容を読み直す。
@@ -94,39 +93,16 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     );
   }
 
-  /// 待機の計測を再開する。待機画面に戻ってきたときに呼ぶ。
-  Future<void> resumeWaiting(String id) async {
-    final now = _now;
-    final memo = _find(id);
-    if (memo?.wait == null || memo!.wait!.isRunning) {
-      return;
-    }
-
-    await _mutate(
-      (memos) =>
-          memos.map((e) => e.id == id ? e.resumeWaiting(now) : e).toList(),
-    );
-  }
-
-  /// 待機の計測を止める。待機画面を離れたときに呼ぶ。
+  /// 待機をやめてロック中に戻す。経過は捨てる。
   ///
-  /// 経過は残るので、戻ってくれば続きから進む。画面が捨てられる途中でも呼ばれるので、
+  /// 待機画面を離れたときにも呼ぶ。画面が捨てられる途中でも呼ばれるので、
   /// Provider から引くものは最初の await より前に済ませておく。
-  Future<void> pauseWaiting(String id) async {
-    final now = _now;
+  Future<void> cancelWaiting(String id) async {
     final memo = _find(id);
-    if (memo?.wait?.isRunning != true) {
+    if (memo?.wait == null) {
       return;
     }
 
-    await _mutate(
-      (memos) =>
-          memos.map((e) => e.id == id ? e.pauseWaiting(now) : e).toList(),
-    );
-  }
-
-  /// 待機をやめてロック中に戻す。計測はリセットされる。
-  Future<void> cancelWaiting(String id) async {
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.cancelWaiting() : e).toList(),
     );

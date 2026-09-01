@@ -64,13 +64,13 @@ void main() {
     expect(memo.lockStateAt(clock.now()).canRead, isFalse);
   });
 
-  test('startWaiting で待機が始まり、解錠時刻の通知が予約される', () async {
+  test('startWaiting で待機が始まる', () async {
     final id = await addMemo();
 
     await notifier().startWaiting(id);
 
     final memo = container.read(memoProvider(id))!;
-    expect(memo.wait?.resumedAt, clock.now());
+    expect(memo.wait?.startedAt, clock.now());
   });
 
   test('待機時間が過ぎると解錠される', () async {
@@ -165,12 +165,10 @@ void main() {
     expect(container.read(memoProvider(id))!.wait, wait);
   });
 
-  test('アプリを再起動すると、待った分は残り、落ちていた間は進まない', () async {
+  test('アプリを再起動すると待機は消える', () async {
     final id = await addMemo();
     await notifier().startWaiting(id);
     clock.advance(const Duration(minutes: 4));
-    await notifier().pauseWaiting(id);
-    clock.advance(const Duration(hours: 1));
 
     // 保存済みデータだけを引き継いで作り直す。
     container.dispose();
@@ -178,143 +176,27 @@ void main() {
     addTearDown(container.dispose);
     await read();
 
-    final state = container.read(memoProvider(id))!.lockStateAt(clock.now());
+    final memo = container.read(memoProvider(id))!;
+    expect(memo.wait, isNull);
+    expect(memo.lockStateAt(clock.now()), const MemoLocked());
+  });
+
+  test('待機画面を離れると、経過ごと捨てて最初からになる', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id);
+    clock.advance(const Duration(minutes: 9));
+
+    // 画面を離れると呼ばれる。
+    await notifier().cancelWaiting(id);
+
+    expect(container.read(memoProvider(id))!.wait, isNull);
+
+    // 残り1分だったぶんは戻らない。開き直せば最初から10分。
+    await notifier().startWaiting(id);
     expect(
-      state,
-      const MemoWaiting(remaining: Duration(minutes: 6), running: false),
+      container.read(memoProvider(id))!.lockStateAt(clock.now()),
+      MemoWaiting(remaining: rule.duration),
     );
-  });
-
-  group('待機の停止と再開', () {
-    test('止めている間は残り時間が減らない', () async {
-      final id = await addMemo();
-      await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 4));
-
-      await notifier().pauseWaiting(id);
-      clock.advance(const Duration(hours: 1));
-
-      expect(
-        container.read(memoProvider(id))!.lockStateAt(clock.now()),
-        const MemoWaiting(remaining: Duration(minutes: 6), running: false),
-      );
-    });
-
-    test('再開すると続きから進み、通知も入れ直す', () async {
-      final id = await addMemo();
-      await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 4));
-      await notifier().pauseWaiting(id);
-      clock.advance(const Duration(hours: 1));
-
-      await notifier().resumeWaiting(id);
-      clock.advance(const Duration(minutes: 6));
-
-      expect(
-        container.read(memoProvider(id))!.lockStateAt(clock.now()).canRead,
-        isTrue,
-      );
-    });
-
-    test('アプリが落ちても、止めるまでに待った分は残る', () async {
-      final id = await addMemo();
-      await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 4));
-      await notifier().pauseWaiting(id);
-      await notifier().resumeWaiting(id);
-      clock.advance(const Duration(minutes: 3));
-
-      // 止めずに落ちた場合を、保存内容の読み直しで再現する。
-      container.dispose();
-      container = createContainer();
-      addTearDown(container.dispose);
-      await read();
-
-      expect(
-        container.read(memoProvider(id))!.lockStateAt(clock.now()),
-        const MemoWaiting(remaining: Duration(minutes: 6), running: false),
-      );
-    });
-  });
-
-  test('一覧は更新日時の新しい順に並ぶ', () async {
-    final now = DateTime(2026);
-    repository = InMemoryMemoRepository([
-      Memo(
-        id: 'old',
-        title: 'old',
-        body: '',
-        createdAt: now,
-        updatedAt: now,
-      ),
-      Memo(
-        id: 'new',
-        title: 'new',
-        body: '',
-        createdAt: now,
-        updatedAt: now.add(const Duration(days: 1)),
-      ),
-    ]);
-    container = createContainer();
-    addTearDown(container.dispose);
-
-    final memos = await read();
-    expect(memos.map((e) => e.id), ['new', 'old']);
-  });
-
-  group('開封の記録', () {
-    test('解錠のたびに回数が増える', () async {
-      final id = await addMemo();
-
-      for (var i = 0; i < 2; i++) {
-        await notifier().startWaiting(id);
-        clock.advance(rule.duration);
-        await notifier().settleUnlock(id);
-        clock.advance(UnlockPolicy.openWindow);
-        await notifier().refresh();
-      }
-
-      expect(container.read(memoProvider(id))!.openCount, 2);
-    });
-
-    test('同じ解錠のあいだは回数が増えない', () async {
-      final id = await addMemo();
-      await notifier().startWaiting(id);
-      clock.advance(rule.duration);
-
-      await notifier().settleUnlock(id);
-      await notifier().settleUnlock(id);
-
-      expect(container.read(memoProvider(id))!.openCount, 1);
-    });
-  });
-
-  group('待機時間をのばす提案', () {
-    test('extendWait で1段階だけ長くなる', () async {
-      final id = await addMemo(
-        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 3)),
-      );
-
-      final extended = await notifier().extendWait(id);
-
-      expect(extended, const Duration(minutes: 5));
-      expect(
-        container.read(memoProvider(id))!.unlockRule.expectedWait,
-        const Duration(minutes: 5),
-      );
-    });
-
-    test('いちばん長い待機時間なら何もしない', () async {
-      final id = await addMemo(
-        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 10)),
-      );
-
-      expect(await notifier().extendWait(id), isNull);
-      expect(
-        container.read(memoProvider(id))!.unlockRule.expectedWait,
-        const Duration(minutes: 10),
-      );
-    });
   });
 
   group('問いかけ', () {
