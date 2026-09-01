@@ -33,6 +33,12 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
   /// 解錠を記録済みか。待ち直したらまた記録する。
   bool _settled = false;
 
+  /// この画面に入ったときの待機を始めたか。
+  ///
+  /// 一覧から開いた時点で待機を始める。読みたくて開いたのだから、そこから
+  /// 数え始めてよい。再ロックされたあとに開き直すかどうかは本人に決めさせる。
+  bool _autoStarted = false;
+
   /// 提案を「あとで」で閉じたか。閉じるのはこの表示の間だけ。
   bool _suggestionDismissed = false;
 
@@ -100,6 +106,13 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
     if (lockState.canRead && memo.unlockedAt == null) {
       _settleUnlock();
+    } else if (lockState is MemoLocked && !_autoStarted && _foreground) {
+      _autoStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _foreground) {
+          unawaited(_open(memo));
+        }
+      });
     }
 
     return Scaffold(
@@ -171,6 +184,7 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
   Future<void> _open(Memo memo) async {
     _settled = false;
+    _autoStarted = true;
     await _notifier.startWaiting(memo.id);
   }
 

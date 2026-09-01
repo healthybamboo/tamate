@@ -98,11 +98,8 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    expect(find.text('解錠するまで本文は読めません'), findsOneWidget);
 
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
-
+    // 開いた時点で待機が始まる。
     expect(find.text('待機中'), findsOneWidget);
     expect(find.text('あと1分0秒'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
@@ -120,8 +117,6 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
@@ -136,8 +131,6 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
@@ -147,6 +140,7 @@ void main() {
     clock.advance(const Duration(minutes: 6));
     await tick(tester);
 
+    // 再ロックされたあとは、画面にいても勝手には始まらない。
     expect(find.text('ここは読めないはず'), findsNothing);
     expect(find.text('開く'), findsOneWidget);
   });
@@ -156,8 +150,6 @@ void main() {
     await createMemo(tester, title: '秘密', body: 'ここは読めないはず');
 
     await tester.tap(find.text('秘密'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
     await tester.pumpAndSettle();
 
     clock.advance(const Duration(seconds: 30));
@@ -206,8 +198,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(generated), findsNothing);
 
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
 
@@ -236,8 +226,6 @@ void main() {
 
     expect(find.text('3回開いた'), findsOneWidget);
 
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
 
@@ -259,8 +247,6 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
@@ -273,8 +259,6 @@ void main() {
 
     // 開き直しても、待った30秒は戻らない。
     await tester.tap(find.text('秘密'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
     await tester.pumpAndSettle();
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
@@ -366,8 +350,6 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     // 待たずに問いへ進む。本文はまだ出ない。
     expect(find.text('1 / 2'), findsOneWidget);
@@ -401,8 +383,6 @@ void main() {
 
     await pumpApp(tester);
     await tester.tap(find.text('秘密'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
     await tester.pumpAndSettle();
 
     expect(find.text('後悔しませんか'), findsOneWidget);
