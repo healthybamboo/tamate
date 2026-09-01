@@ -137,5 +137,46 @@
         "type": "int"
       }
     }
+  },
+  "stateAwaitingPassCode": "コード入力待ち",
+  "passCodePrompt": "作成時に表示した4桁を入力してください",
+  "passCodeLabel": "解錠コード",
+  "passCodeWrong": "コードが違います",
+  "actionUnlock": "解錠する",
+  "passCodeUseLabel": "解錠コードを使う",
+  "passCodeUseHelper": "4桁のコードを1度だけ表示します。忘れたら二度と読めません",
+  "passCodeIssuedTitle": "解錠コード",
+  "passCodeIssuedMessage": "このコードは二度と表示されません。覚えてから閉じてください。",
+  "openHistoryTitle": "開封の記録",
+  "openHistoryEmpty": "まだ開いたことがありません",
+  "suggestExtendTitle": "よく開いていますね",
+  "suggestExtendMessage": "待機時間を{duration}にしますか？",
+  "@suggestExtendMessage": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "suggestReviewTitle": "何度も開いています",
+  "suggestReviewMessage": "内容を見直すか、思い切って消してしまうのもいいかもしれません",
+  "actionExtendWait": "のばす",
+  "actionLater": "あとで",
+  "actionReview": "見直す",
+  "extendedWaitDone": "次からは{duration}待ちます",
+  "@extendedWaitDone": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "openCountLabel": "{count}回開いた",
+  "@openCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

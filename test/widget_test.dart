@@ -7,6 +7,8 @@ import 'package:tamate/app.dart';
 import 'package:tamate/core/clock/clock.dart';
 import 'package:tamate/core/notifications/notification_service.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
+import 'package:tamate/features/memo/domain/memo.dart';
+import 'package:tamate/features/memo/domain/unlock_rule.dart';
 
 import 'support/fakes.dart';
 
@@ -54,6 +56,7 @@ void main() {
     required String title,
     required String body,
     String waitLabel = '1分',
+    bool usePassCode = false,
   }) async {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
@@ -63,8 +66,26 @@ void main() {
     await tester.tap(find.text(waitLabel));
     await tester.pumpAndSettle();
 
+    if (usePassCode) {
+      await tester.tap(find.text('解錠コードを使う'));
+      await tester.pumpAndSettle();
+    }
+
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
+  }
+
+  /// 発行された解錠コードを読み取り、ダイアログを閉じる。
+  Future<String> readIssuedPassCode(WidgetTester tester) async {
+    final code = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((text) => text.data)
+        .firstWhere(
+            (data) => data != null && RegExp(r'^\d{4}$').hasMatch(data))!;
+
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    return code;
   }
 
   testWidgets('起動するとメモ一覧が表示され、新規作成に遷移できる', (tester) async {
@@ -166,5 +187,81 @@ void main() {
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
     expect(find.text('ここは読めないはず'), findsNothing);
+  });
+
+  testWidgets('解錠コード付きのメモは、待機のあとコードを入れるまで読めない', (tester) async {
+    await pumpApp(tester);
+    await createMemo(
+      tester,
+      title: '秘密',
+      body: 'ここは読めないはず',
+      usePassCode: true,
+    );
+
+    final code = await readIssuedPassCode(tester);
+
+    await tester.tap(find.text('秘密'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('開く'));
+    await tester.pumpAndSettle();
+
+    clock.advance(const Duration(minutes: 1));
+    await tick(tester);
+
+    // 待機は明けたが、まだ本文は出ない。
+    expect(find.text('ここは読めないはず'), findsNothing);
+    expect(find.text('解錠する'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, '9999');
+    await tester.tap(find.text('解錠する'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('コードが違います'), findsOneWidget);
+    expect(find.text('ここは読めないはず'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, code);
+    await tester.tap(find.text('解錠する'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ここは読めないはず'), findsOneWidget);
+  });
+
+  testWidgets('開いた回数が記録され、増えると待機時間をのばす提案が出る', (tester) async {
+    final openedAt = [
+      for (var i = 0; i < 3; i++) clock.now().subtract(Duration(hours: i + 1)),
+    ];
+    repository = InMemoryMemoRepository([
+      Memo(
+        id: 'often',
+        title: 'よく開くメモ',
+        body: '中身',
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 1)),
+        openedAt: openedAt,
+      ),
+    ]);
+
+    await pumpApp(tester);
+    await tester.tap(find.text('よく開くメモ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('3回開いた'), findsOneWidget);
+
+    await tester.tap(find.text('開く'));
+    await tester.pumpAndSettle();
+    clock.advance(const Duration(minutes: 1));
+    await tick(tester);
+
+    expect(find.text('よく開いていますね'), findsOneWidget);
+    expect(find.text('待機時間を3分にしますか？'), findsOneWidget);
+
+    await tester.tap(find.text('のばす'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('次からは3分待ちます'), findsOneWidget);
+    expect(find.text('よく開いていますね'), findsNothing);
+    // 開封の記録は解錠のたびに増える。
+    expect(find.text('4回開いた'), findsOneWidget);
   });
 }

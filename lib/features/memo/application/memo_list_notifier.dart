@@ -5,6 +5,8 @@ import '../../../core/clock/clock.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../data/memo_repository.dart';
 import '../domain/memo.dart';
+import '../domain/memo_lock_state.dart';
+import '../domain/unlock_policy.dart';
 import '../domain/unlock_rule.dart';
 
 /// メモ一覧の状態を保持し、CRUD と解錠の操作を提供する。
@@ -112,6 +114,48 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     );
   }
 
+  /// 解錠コードを入力する。正しければ解錠して true を返す。
+  ///
+  /// 入力の失敗に回数制限は設けない。防ぎたいのは総当たりではなく、
+  /// 「覚えているつもりだった」という記憶の方なので。
+  Future<bool> submitPassCode(String id, String input) async {
+    final now = _now;
+    final memo = _find(id);
+    if (memo == null || memo.lockStateAt(now) is! MemoAwaitingPassCode) {
+      return false;
+    }
+    if (!memo.acceptsPassCode(input)) {
+      return false;
+    }
+
+    await _mutate(
+      (memos) =>
+          memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
+    );
+    return true;
+  }
+
+  /// 待機時間を1段階のばす。いちばん長いものなら何もせず null を返す。
+  ///
+  /// 作成後に待機時間を変えられるのは、開封回数に応じた提案からのこの経路だけ。
+  Future<Duration?> extendWait(String id) async {
+    final memo = _find(id);
+    final current = memo?.unlockRule.expectedWait;
+    if (memo == null || current == null) {
+      return null;
+    }
+    final next = UnlockPolicy.nextWaitOption(current);
+    if (next == null) {
+      return null;
+    }
+
+    await _mutate(
+      (memos) =>
+          memos.map((e) => e.id == id ? e.withWaitDuration(next) : e).toList(),
+    );
+    return next;
+  }
+
   /// 解錠されたことを記録する。閲覧可能時間の起点になる。
   ///
   /// 解錠時刻が計算できるルールでは記録しなくても状態は導出できるが、
@@ -167,6 +211,10 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     final startedAt = memo.waitStartedAt;
     if (startedAt == null) {
       return false;
+    }
+    if (memo.unlockedAt != null) {
+      // 解錠は成立済み。読める時間が残っているかどうかだけの問題。
+      return !memo.lockStateAt(now).canRead;
     }
     final progress = memo.unlockRule.progressAt(startedAt: startedAt, now: now);
     return progress is UnlockSatisfied && !memo.lockStateAt(now).canRead;

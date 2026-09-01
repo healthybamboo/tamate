@@ -27,6 +27,9 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   /// 新規作成時に選んでいる待機時間。作成後は変更できない。
   Duration _waitDuration = UnlockPolicy.defaultWait;
 
+  /// 解錠コードを使うか。
+  bool _usePassCode = false;
+
   bool get _isNew => widget.memoId == null;
 
   @override
@@ -51,11 +54,18 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     final body = _bodyController.text;
 
     if (_isNew) {
+      final wait = WaitDurationUnlockRule(_waitDuration);
+      final passCode = _usePassCode ? PassCodeUnlockRule.generate() : null;
+
       await notifier.add(
         title: title,
         body: body,
-        unlockRule: WaitDurationUnlockRule(_waitDuration),
+        unlockRule: passCode == null ? wait : AllOfUnlockRule([wait, passCode]),
       );
+
+      if (passCode != null) {
+        await _showIssuedPassCode(passCode.code);
+      }
     } else {
       final saved = await notifier.edit(
         id: widget.memoId!,
@@ -69,6 +79,46 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
       }
     }
     _leave();
+  }
+
+  /// 発行した解錠コードを1度だけ見せる。
+  ///
+  /// 控えを見る手段は用意しない。忘れたら開けないことが仕掛けなので。
+  Future<void> _showIssuedPassCode(String code) async {
+    if (!mounted) {
+      return;
+    }
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.passCodeIssuedTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              code,
+              style: Theme.of(context)
+                  .textTheme
+                  .displaySmall
+                  ?.copyWith(letterSpacing: 12),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              l10n.passCodeIssuedMessage,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.actionOk),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 画面を閉じる。[message] があればスナックバーで知らせる。
@@ -124,7 +174,15 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
                   value: _waitDuration,
                   onChanged: (value) => setState(() => _waitDuration = value),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _usePassCode,
+                  onChanged: (value) => setState(() => _usePassCode = value),
+                  title: Text(l10n.passCodeUseLabel),
+                  subtitle: Text(l10n.passCodeUseHelper),
+                ),
+                const SizedBox(height: 8),
               ],
               Expanded(
                 child: TextField(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,13 +9,15 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
 import '../domain/memo.dart';
 import '../domain/memo_lock_state.dart';
+import '../domain/unlock_policy.dart';
+import '../domain/unlock_rule.dart';
 import 'duration_format.dart';
 import 'memo_display.dart';
 
 /// メモを開く画面。
 ///
-/// ロック中・待機中・解錠中のどれを見せるかは [Memo.lockStateAt] の結果で決まる。
-/// 待機が終わるまで本文はウィジェットツリーにも載せない。
+/// ロック中・待機中・コード入力待ち・解錠中のどれを見せるかは
+/// [Memo.lockStateAt] の結果で決まる。解錠するまで本文はウィジェットツリーにも載せない。
 class MemoDetailPage extends ConsumerStatefulWidget {
   const MemoDetailPage({super.key, required this.memoId});
 
@@ -27,6 +30,9 @@ class MemoDetailPage extends ConsumerStatefulWidget {
 class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
   /// 解錠時刻を記録済みの待機。待ち直したらまた記録する。
   DateTime? _settledWait;
+
+  /// 提案を「あとで」で閉じたか。閉じるのはこの表示の間だけ。
+  bool _suggestionDismissed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -68,19 +74,36 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
         ],
       ),
       body: SafeArea(
-        child: switch (lockState) {
-          MemoLocked() => _LockedView(memo: memo, onOpen: () => _open(memo)),
-          MemoWaiting(:final remaining, :final unlockAt) => _WaitingView(
-              remaining: remaining,
-              unlockAt: unlockAt,
-              now: now,
-              onStopWaiting: _stopWaiting,
+        child: Column(
+          children: [
+            Expanded(
+              child: switch (lockState) {
+                MemoLocked() =>
+                  _LockedView(memo: memo, onOpen: () => _open(memo)),
+                MemoWaiting(:final remaining, :final unlockAt) => _WaitingView(
+                    remaining: remaining,
+                    unlockAt: unlockAt,
+                    now: now,
+                    onStopWaiting: _stopWaiting,
+                  ),
+                MemoAwaitingPassCode() =>
+                  _PassCodeView(onSubmit: _submitPassCode),
+                MemoUnlocked(:final remaining) => _UnlockedView(
+                    memo: memo,
+                    remaining: remaining,
+                    showSuggestion: !_suggestionDismissed,
+                    onExtendWait: _extendWait,
+                    onReview: () =>
+                        context.push(AppRoutes.memoEdit(widget.memoId)),
+                    onDelete: _delete,
+                    onDismissSuggestion: () =>
+                        setState(() => _suggestionDismissed = true),
+                  ),
+              },
             ),
-          MemoUnlocked(:final remaining) => _UnlockedView(
-              memo: memo,
-              remaining: remaining,
-            ),
-        },
+            _OpenHistory(memo: memo, now: now),
+          ],
+        ),
       ),
     );
   }
@@ -105,6 +128,26 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
           memo.id,
           notification: unlockNotificationContent(l10n, memo),
         );
+  }
+
+  Future<bool> _submitPassCode(String code) =>
+      ref.read(memoListProvider.notifier).submitPassCode(widget.memoId, code);
+
+  Future<void> _extendWait() async {
+    final l10n = AppLocalizations.of(context);
+    final extended =
+        await ref.read(memoListProvider.notifier).extendWait(widget.memoId);
+    if (!mounted || extended == null) {
+      return;
+    }
+    setState(() => _suggestionDismissed = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          l10n.extendedWaitDone(formatWaitLength(l10n, extended)),
+        ),
+      ),
+    );
   }
 
   Future<void> _stopWaiting() async {
@@ -179,6 +222,14 @@ class _LockedView extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
+        if (memo.unlockRule.requiresPassCode) ...[
+          const SizedBox(height: 8),
+          Text(
+            l10n.passCodePrompt,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
         const SizedBox(height: 32),
         FilledButton.icon(
           onPressed: onOpen,
@@ -250,12 +301,97 @@ class _WaitingView extends StatelessWidget {
   }
 }
 
+/// 待機は終わったが、解錠コードの入力を待っている状態。
+class _PassCodeView extends StatefulWidget {
+  const _PassCodeView({required this.onSubmit});
+
+  /// 正しければ true を返す。
+  final Future<bool> Function(String code) onSubmit;
+
+  @override
+  State<_PassCodeView> createState() => _PassCodeViewState();
+}
+
+class _PassCodeViewState extends State<_PassCodeView> {
+  final TextEditingController _controller = TextEditingController();
+  bool _wrong = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final accepted = await widget.onSubmit(_controller.text);
+    if (!mounted || accepted) {
+      return;
+    }
+    setState(() => _wrong = true);
+    _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+
+    return _CenteredColumn(
+      children: [
+        Icon(Icons.pin_outlined, size: 64, color: theme.colorScheme.primary),
+        const SizedBox(height: 24),
+        Text(l10n.passCodePrompt, textAlign: TextAlign.center),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: 200,
+          child: TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(PassCodeUnlockRule.digits),
+            ],
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineMedium?.copyWith(letterSpacing: 8),
+            decoration: InputDecoration(
+              labelText: l10n.passCodeLabel,
+              errorText: _wrong ? l10n.passCodeWrong : null,
+            ),
+            onChanged: (_) {
+              if (_wrong) {
+                setState(() => _wrong = false);
+              }
+            },
+            onSubmitted: (_) => _submit(),
+          ),
+        ),
+        const SizedBox(height: 24),
+        FilledButton(onPressed: _submit, child: Text(l10n.actionUnlock)),
+      ],
+    );
+  }
+}
+
 /// 解錠中。読めるのは再ロックまでの間だけ。
 class _UnlockedView extends StatelessWidget {
-  const _UnlockedView({required this.memo, required this.remaining});
+  const _UnlockedView({
+    required this.memo,
+    required this.remaining,
+    required this.showSuggestion,
+    required this.onExtendWait,
+    required this.onReview,
+    required this.onDelete,
+    required this.onDismissSuggestion,
+  });
 
   final Memo memo;
   final Duration remaining;
+  final bool showSuggestion;
+  final VoidCallback onExtendWait;
+  final VoidCallback onReview;
+  final VoidCallback onDelete;
+  final VoidCallback onDismissSuggestion;
 
   @override
   Widget build(BuildContext context) {
@@ -295,10 +431,15 @@ class _UnlockedView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  memo.body,
-                  style: theme.textTheme.bodyLarge,
-                ),
+                if (showSuggestion)
+                  _Suggestions(
+                    memo: memo,
+                    onExtendWait: onExtendWait,
+                    onReview: onReview,
+                    onDelete: onDelete,
+                    onDismiss: onDismissSuggestion,
+                  ),
+                SelectableText(memo.body, style: theme.textTheme.bodyLarge),
                 const SizedBox(height: 24),
                 Text(
                   l10n.unlockedRelockNotice,
@@ -309,6 +450,164 @@ class _UnlockedView extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 開きすぎているメモへの提案。従うかどうかはユーザーが決める。
+class _Suggestions extends StatelessWidget {
+  const _Suggestions({
+    required this.memo,
+    required this.onExtendWait,
+    required this.onReview,
+    required this.onDelete,
+    required this.onDismiss,
+  });
+
+  final Memo memo;
+  final VoidCallback onExtendWait;
+  final VoidCallback onReview;
+  final VoidCallback onDelete;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final wait = memo.unlockRule.expectedWait;
+    final next = wait == null ? null : UnlockPolicy.nextWaitOption(wait);
+    final suggestExtend = next != null &&
+        memo.openCount >= UnlockPolicy.openCountForWaitSuggestion;
+    final suggestReview =
+        memo.openCount >= UnlockPolicy.openCountForReviewSuggestion;
+
+    if (!suggestExtend && !suggestReview) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (suggestExtend)
+            _SuggestionCard(
+              title: l10n.suggestExtendTitle,
+              message: l10n.suggestExtendMessage(
+                formatWaitLength(l10n, next),
+              ),
+              actions: [
+                TextButton(onPressed: onDismiss, child: Text(l10n.actionLater)),
+                FilledButton(
+                  onPressed: onExtendWait,
+                  child: Text(l10n.actionExtendWait),
+                ),
+              ],
+            ),
+          if (suggestExtend && suggestReview) const SizedBox(height: 12),
+          if (suggestReview)
+            _SuggestionCard(
+              title: l10n.suggestReviewTitle,
+              message: l10n.suggestReviewMessage,
+              actions: [
+                TextButton(
+                  onPressed: onDelete,
+                  child: Text(l10n.actionDelete),
+                ),
+                TextButton(onPressed: onReview, child: Text(l10n.actionReview)),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuggestionCard extends StatelessWidget {
+  const _SuggestionCard({
+    required this.title,
+    required this.message,
+    required this.actions,
+  });
+
+  final String title;
+  final String message;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(message, style: theme.textTheme.bodyMedium),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(mainAxisSize: MainAxisSize.min, children: actions),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 開封の記録。本文ではないのでロック中でも見せる。
+class _OpenHistory extends StatelessWidget {
+  const _OpenHistory({required this.memo, required this.now});
+
+  /// 表示する履歴の件数。
+  static const int _limit = 10;
+
+  final Memo memo;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    final history = memo.openedAt.reversed.take(_limit).toList();
+
+    return Material(
+      color: theme.colorScheme.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Divider(height: 1),
+          ExpansionTile(
+            leading: const Icon(Icons.history),
+            title: Text(l10n.openHistoryTitle),
+            subtitle: Text(l10n.openCountLabel(memo.openCount)),
+            children: [
+              if (history.isEmpty)
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    l10n.openHistoryEmpty,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                )
+              else
+                for (final at in history)
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      formatUnlockTime(locale, at, now),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

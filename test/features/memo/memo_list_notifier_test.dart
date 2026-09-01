@@ -225,4 +225,123 @@ void main() {
     final memos = await read();
     expect(memos.map((e) => e.id), ['new', 'old']);
   });
+
+  group('解錠コード', () {
+    Future<String> addCodeMemo() => addMemo(unlockRule: codeRule);
+
+    test('待機が明けるまではコードを受け付けない', () async {
+      final id = await addCodeMemo();
+      await notifier().startWaiting(id, notification: notification);
+
+      expect(await notifier().submitPassCode(id, '0429'), isFalse);
+      expect(container.read(memoProvider(id))!.unlockedAt, isNull);
+    });
+
+    test('正しいコードで解錠される', () async {
+      final id = await addCodeMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+
+      expect(await notifier().submitPassCode(id, '0429'), isTrue);
+
+      final memo = container.read(memoProvider(id))!;
+      expect(memo.lockStateAt(clock.now()).canRead, isTrue);
+      expect(memo.openCount, 1);
+    });
+
+    test('違うコードでは解錠されない', () async {
+      final id = await addCodeMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+
+      expect(await notifier().submitPassCode(id, '9999'), isFalse);
+
+      final memo = container.read(memoProvider(id))!;
+      expect(memo.lockStateAt(clock.now()).canRead, isFalse);
+      expect(memo.openCount, 0);
+    });
+
+    test('何度間違えても入力を受け付け続ける', () async {
+      final id = await addCodeMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+
+      for (var i = 0; i < 5; i++) {
+        expect(await notifier().submitPassCode(id, '0000'), isFalse);
+      }
+
+      expect(await notifier().submitPassCode(id, '0429'), isTrue);
+    });
+  });
+
+  group('開封の記録', () {
+    test('解錠のたびに回数が増える', () async {
+      final id = await addMemo();
+
+      for (var i = 0; i < 2; i++) {
+        await notifier().startWaiting(id, notification: notification);
+        clock.advance(rule.duration);
+        await notifier().settleUnlock(id);
+        clock.advance(UnlockPolicy.openWindow);
+        await notifier().refresh();
+      }
+
+      expect(container.read(memoProvider(id))!.openCount, 2);
+    });
+
+    test('同じ解錠のあいだは回数が増えない', () async {
+      final id = await addMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(rule.duration);
+
+      await notifier().settleUnlock(id);
+      await notifier().settleUnlock(id);
+
+      expect(container.read(memoProvider(id))!.openCount, 1);
+    });
+  });
+
+  group('待機時間をのばす提案', () {
+    test('extendWait で1段階だけ長くなる', () async {
+      final id = await addMemo(
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 3)),
+      );
+
+      final extended = await notifier().extendWait(id);
+
+      expect(extended, const Duration(minutes: 5));
+      expect(
+        container.read(memoProvider(id))!.unlockRule.expectedWait,
+        const Duration(minutes: 5),
+      );
+    });
+
+    test('いちばん長い待機時間なら何もしない', () async {
+      final id = await addMemo(
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 10)),
+      );
+
+      expect(await notifier().extendWait(id), isNull);
+      expect(
+        container.read(memoProvider(id))!.unlockRule.expectedWait,
+        const Duration(minutes: 10),
+      );
+    });
+
+    test('解錠コード付きでも待機時間だけが変わる', () async {
+      final id = await addMemo(unlockRule: codeRule);
+
+      await notifier().extendWait(id);
+
+      final memo = container.read(memoProvider(id))!;
+      expect(memo.unlockRule.expectedWait, const Duration(minutes: 3));
+      expect(memo.acceptsPassCode('0429'), isTrue);
+    });
+  });
 }
+
+/// 解錠コード付きのルール。待機1分 + コード。
+const AllOfUnlockRule codeRule = AllOfUnlockRule([
+  WaitDurationUnlockRule(Duration(minutes: 1)),
+  PassCodeUnlockRule('0429'),
+]);

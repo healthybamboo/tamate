@@ -93,6 +93,7 @@ class _MemoTile extends ConsumerWidget {
   IconData _iconFor(MemoLockState state) => switch (state) {
         MemoLocked() => Icons.lock_outline,
         MemoWaiting() => Icons.hourglass_bottom,
+        MemoAwaitingPassCode() => Icons.pin_outlined,
         MemoUnlocked() => Icons.lock_open_outlined,
       };
 
@@ -102,6 +103,7 @@ class _MemoTile extends ConsumerWidget {
         MemoWaiting(:final remaining) => remaining == null
             ? l10n.stateWaiting
             : l10n.waitingRemaining(formatRemaining(l10n, remaining)),
+        MemoAwaitingPassCode() => l10n.stateAwaitingPassCode,
         MemoUnlocked(:final remaining) =>
           l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
       };

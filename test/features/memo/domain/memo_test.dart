@@ -148,4 +148,97 @@ void main() {
       expect(restored.waitStartedAt, isNull);
     });
   });
+
+  group('解錠コード', () {
+    const codeRule = AllOfUnlockRule([
+      WaitDurationUnlockRule(Duration(minutes: 3)),
+      PassCodeUnlockRule('0429'),
+    ]);
+
+    Memo codeMemo({DateTime? waitStartedAt, DateTime? unlockedAt}) => Memo(
+          id: 'id',
+          title: 'タイトル',
+          body: '本文',
+          createdAt: createdAt,
+          updatedAt: createdAt,
+          unlockRule: codeRule,
+          waitStartedAt: waitStartedAt,
+          unlockedAt: unlockedAt,
+        );
+
+    test('待機が明けてもコードを入れるまで読めない', () {
+      final state = codeMemo(waitStartedAt: createdAt)
+          .lockStateAt(createdAt.add(const Duration(minutes: 5)));
+
+      expect(state, const MemoAwaitingPassCode());
+      expect(state.canRead, isFalse);
+    });
+
+    test('コードが通ったら閲覧可能時間が始まる', () {
+      final acceptedAt = createdAt.add(const Duration(minutes: 5));
+      final state = codeMemo(waitStartedAt: createdAt, unlockedAt: acceptedAt)
+          .lockStateAt(acceptedAt.add(const Duration(minutes: 1)));
+
+      expect(state.canRead, isTrue);
+      expect(
+        (state as MemoUnlocked).relocksAt,
+        acceptedAt.add(UnlockPolicy.openWindow),
+      );
+    });
+
+    test('コードの判定はメモから引ける', () {
+      expect(codeMemo().acceptsPassCode('0429'), isTrue);
+      expect(codeMemo().acceptsPassCode('0000'), isFalse);
+    });
+  });
+
+  group('開封の記録', () {
+    test('解錠のたびに履歴が1件増える', () {
+      final first = createdAt.add(const Duration(minutes: 10));
+      final second = createdAt.add(const Duration(hours: 1));
+
+      final opened =
+          memo().markUnlocked(first).startWaiting(second).markUnlocked(second);
+
+      expect(opened.openedAt, [first, second]);
+      expect(opened.openCount, 2);
+    });
+
+    test('待機のやり直しでは履歴が消えない', () {
+      final at = createdAt.add(const Duration(minutes: 10));
+      final canceled = memo().markUnlocked(at).cancelWaiting();
+
+      expect(canceled.openCount, 1);
+      expect(canceled.waitStartedAt, isNull);
+    });
+
+    test('JSON を往復しても履歴が残る', () {
+      final at = createdAt.add(const Duration(minutes: 10));
+      final opened = memo(waitStartedAt: createdAt).markUnlocked(at);
+
+      expect(Memo.fromJson(opened.toJson()), opened);
+    });
+
+    test('履歴が無い古いデータは0回として読む', () {
+      final restored = Memo.fromJson({
+        'id': 'old',
+        'title': '昔のメモ',
+        'body': '本文',
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': createdAt.toIso8601String(),
+      });
+
+      expect(restored.openCount, 0);
+    });
+  });
+
+  group('待機時間の差し替え', () {
+    test('withWaitDuration で待機時間だけが変わる', () {
+      final extended = memo(waitStartedAt: createdAt)
+          .withWaitDuration(const Duration(minutes: 10));
+
+      expect(extended.unlockRule.expectedWait, const Duration(minutes: 10));
+      expect(extended.waitStartedAt, createdAt);
+    });
+  });
 }
