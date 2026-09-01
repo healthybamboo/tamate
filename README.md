@@ -60,7 +60,7 @@ lib/
 | ルーティング | `go_router` | パスは `AppRoutes` に集約 |
 | 永続化 | `shared_preferences` | `MemoRepository` の裏に隠しているので差し替え可能 |
 | 多言語化 | `flutter_localizations` + `gen-l10n` | 日本語がテンプレート、英語も用意 |
-| ローカル通知 | `flutter_local_notifications` + `timezone` | 解錠時刻に知らせる。正確なアラーム権限は使わない |
+| ローカル通知 | `flutter_local_notifications` + `timezone` | 解錠時刻ちょうどに知らせる。Android は正確なアラームを使い、許可が無ければ精度を落とす |
 | Lint | `flutter_lints` + `riverpod_lint` | |
 
 ## 実装済みのもの

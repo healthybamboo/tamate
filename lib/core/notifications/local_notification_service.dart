@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
@@ -18,11 +19,15 @@ class LocalNotificationService implements NotificationService {
 
   static const String _channelId = 'memo_unlock';
 
+  /// 正確なアラームが許可されていないときにプラグインが返すエラーコード。
+  static const String _exactAlarmsNotPermitted = 'exact_alarms_not_permitted';
+
   final FlutterLocalNotificationsPlugin _plugin;
   final StreamController<String> _openRequests =
       StreamController<String>.broadcast();
 
   bool _initialized = false;
+  bool _exactAlarmsRequested = false;
   String? _launchMemoId;
 
   @override
@@ -73,7 +78,9 @@ class LocalNotificationService implements NotificationService {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       if (android != null) {
-        return await android.requestNotificationsPermission() ?? false;
+        final granted = await android.requestNotificationsPermission() ?? false;
+        await _requestExactAlarms(android);
+        return granted;
       }
 
       final ios = _plugin.resolvePlatformSpecificImplementation<
@@ -118,22 +125,70 @@ class LocalNotificationService implements NotificationService {
     );
 
     try {
-      await _plugin.zonedSchedule(
+      await _schedule(
+        memoId: memoId,
+        content: content,
+        scheduledAt: scheduledAt,
+        details: details,
+        mode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } on PlatformException catch (error) {
+      if (error.code != _exactAlarmsNotPermitted) {
+        debugPrint('通知の予約に失敗した: $error');
+        return;
+      }
+      // 正確なアラームを許可されていない場合。精度は落ちるが予約はできる。
+      // 残り時間の表示は現在時刻から計算しているので、通知が遅れてもズレない。
+      try {
+        await _schedule(
+          memoId: memoId,
+          content: content,
+          scheduledAt: scheduledAt,
+          details: details,
+          mode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+      } on Exception catch (error) {
+        debugPrint('通知の予約に失敗した: $error');
+      }
+    } on Exception catch (error) {
+      debugPrint('通知の予約に失敗した: $error');
+    }
+  }
+
+  Future<void> _schedule({
+    required String memoId,
+    required UnlockNotificationContent content,
+    required tz.TZDateTime scheduledAt,
+    required NotificationDetails details,
+    required AndroidScheduleMode mode,
+  }) =>
+      _plugin.zonedSchedule(
         _notificationId(memoId),
         content.title,
         content.body,
         scheduledAt,
         details,
         payload: memoId,
-        // 正確なアラーム（SCHEDULE_EXACT_ALARM）は権限のハードルが高いわりに、
-        // 数分の遅れが問題になる用途でもないので使わない。
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: mode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
-    } on Exception catch (error) {
-      debugPrint('通知の予約に失敗した: $error');
+
+  /// 解錠時刻ちょうどに知らせるための許可を求める。
+  ///
+  /// Android 14 以降は設定画面が開くため、1回だけ求める。断られても
+  /// 予約自体はできる（[AndroidScheduleMode.inexactAllowWhileIdle] に落とす）。
+  Future<void> _requestExactAlarms(
+    AndroidFlutterLocalNotificationsPlugin android,
+  ) async {
+    if (_exactAlarmsRequested) {
+      return;
     }
+    _exactAlarmsRequested = true;
+    if (await android.canScheduleExactNotifications() ?? false) {
+      return;
+    }
+    await android.requestExactAlarmsPermission();
   }
 
   @override
