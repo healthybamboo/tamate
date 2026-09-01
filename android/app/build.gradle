@@ -5,6 +5,14 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// 署名鍵はリポジトリに置かない。android/key.properties があればそれを使い、
+// 無ければデバッグ鍵のままにする（手元でビルドが通らなくなるのを避けるため）。
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "net.bamgrove.tamate"
     compileSdk = flutter.compileSdkVersion
@@ -29,11 +37,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"]
+                keyPassword = keystoreProperties["keyPassword"]
+                storeFile = file(keystoreProperties["storeFile"])
+                storePassword = keystoreProperties["storePassword"]
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            signingConfig = keystorePropertiesFile.exists()
+                ? signingConfigs.release
+                : signingConfigs.debug
         }
     }
 }

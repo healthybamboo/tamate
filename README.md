@@ -78,12 +78,14 @@ lib/
 解錠条件は `UnlockRule` として抽象化してあり、別の仕掛け（場所、回数など）を足すときは
 実装を1つ増やして `UnlockRule.fromJson` に分岐を書けばよい。
 
-## まだやっていないこと
+## リリース
 
-- アプリアイコンとスプラッシュは Flutter の既定のまま
-- Android のリリース署名は未設定（デバッグ鍵で署名される Flutter の初期状態のまま）。
-  鍵と `key.properties` はリポジトリに含めない
-- ストア提出物の準備
+手順は [docs/release.md](docs/release.md)、掲載文とプライバシーの回答は
+[docs/store.md](docs/store.md) にまとめてある。
+
+- アイコンとスプラッシュは `tool/generate_app_icon.dart` で描き出している（素材を持ち込まない）
+- Android のリリース署名は `android/key.properties` があればそれを使う。鍵はリポジトリに含めない
+- 残っているのは、実機での確認とストアへの提出（どちらも鍵とアカウントが要る）
 
 ## ライセンス
 
