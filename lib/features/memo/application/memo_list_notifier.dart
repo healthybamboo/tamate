@@ -95,8 +95,12 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       (memos) =>
           memos.map((e) => e.id == id ? e.startWaiting(now) : e).toList(),
     );
-    await _notifications.requestPermission();
-    await _scheduleUnlock(id, notification);
+
+    // 待つメモだけが通知の対象。問いに答えるだけのメモで許可を求めても意味がない。
+    if (_find(id)?.unlockRule.expectedWait != null) {
+      await _notifications.requestPermission();
+      await _scheduleUnlock(id, notification);
+    }
   }
 
   /// 待機の計測を再開する。待機画面に戻ってきたときに呼ぶ。

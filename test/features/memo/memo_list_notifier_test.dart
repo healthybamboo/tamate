@@ -350,6 +350,17 @@ void main() {
 
     Future<String> addQuestionMemo() => addMemo(unlockRule: questionRule);
 
+    test('問いだけのメモでは通知の許可を求めない', () async {
+      final id = await addMemo(
+        unlockRule: const QuestionUnlockRule(['後悔しませんか']),
+      );
+
+      await notifier().startWaiting(id, notification: notification);
+
+      expect(notifications.permissionRequests, 0);
+      expect(notifications.scheduled, isEmpty);
+    });
+
     test('待機が明けると問いに移る', () async {
       final id = await addQuestionMemo();
       await notifier().startWaiting(id, notification: notification);
