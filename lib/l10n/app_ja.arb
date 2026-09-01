@@ -10,7 +10,132 @@
   "memoUntitled": "無題のメモ",
   "actionSave": "保存",
   "actionDelete": "削除",
+  "actionOk": "OK",
   "actionCancel": "キャンセル",
+  "actionOpen": "開く",
+  "actionEdit": "編集",
+  "actionStopWaiting": "待つのをやめる",
+  "actionClose": "閉じる",
   "deleteConfirmMessage": "このメモを削除しますか？",
-  "errorGeneric": "エラーが発生しました"
+  "stopWaitingConfirmMessage": "待つのをやめると、次に開くときは最初から待ち直しになります。やめますか？",
+  "errorGeneric": "エラーが発生しました",
+  "memoNotFound": "メモが見つかりません",
+  "stateLocked": "ロック中",
+  "stateWaiting": "待機中",
+  "stateUnlocked": "解錠中",
+  "lockedBodyHidden": "解錠するまで本文は読めません",
+  "lockedWaitNotice": "開くと{duration}待つことになります",
+  "@lockedWaitNotice": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingRemaining": "あと{remaining}",
+  "@waitingRemaining": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingUnlockAt": "{time}に解錠",
+  "@waitingUnlockAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "waitingKeepClosedNotice": "アプリを閉じても待機は続きます",
+  "unlockedRemaining": "あと{remaining}読めます",
+  "@unlockedRemaining": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "unlockedRelockNotice": "閉じたあとに読み直すには、また待つことになります",
+  "memoWaitDurationLabel": "待機時間",
+  "memoWaitDurationHelper": "作成後は変更できません",
+  "memoBodyLockedLabel": "解錠中のみ編集できます",
+  "editRejectedRelocked": "再ロックされたため保存できませんでした",
+  "notificationChannelName": "解錠のお知らせ",
+  "notificationChannelDescription": "メモが読めるようになったことを知らせます",
+  "notificationUnlockedTitle": "メモが開けるようになりました",
+  "notificationUnlockedBody": "「{title}」を読めます",
+  "@notificationUnlockedBody": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "durationDayHour": "{days}日{hours}時間",
+  "@durationDayHour": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "durationHourMinute": "{hours}時間{minutes}分",
+  "@durationHourMinute": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "durationMinuteSecond": "{minutes}分{seconds}秒",
+  "@durationMinuteSecond": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      },
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "durationSecond": "{seconds}秒",
+  "@durationSecond": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "waitLengthDays": "{days}日",
+  "@waitLengthDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "waitLengthHours": "{hours}時間",
+  "@waitLengthHours": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "waitLengthMinutes": "{minutes}分",
+  "@waitLengthMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  }
 }

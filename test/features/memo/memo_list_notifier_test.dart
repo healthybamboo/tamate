@@ -1,78 +1,204 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tamate/core/clock/clock.dart';
+import 'package:tamate/core/notifications/notification_service.dart';
 import 'package:tamate/features/memo/application/memo_list_notifier.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
+import 'package:tamate/features/memo/domain/unlock_policy.dart';
+import 'package:tamate/features/memo/domain/unlock_rule.dart';
 
-/// テスト用のインメモリ実装。
-class InMemoryMemoRepository implements MemoRepository {
-  InMemoryMemoRepository([List<Memo> initial = const []])
-      : _memos = [...initial];
-
-  List<Memo> _memos;
-
-  List<Memo> get memos => List.unmodifiable(_memos);
-
-  @override
-  Future<List<Memo>> fetchAll() async => List.unmodifiable(_memos);
-
-  @override
-  Future<void> saveAll(List<Memo> memos) async => _memos = [...memos];
-}
+import '../../support/fakes.dart';
 
 void main() {
+  const notification = UnlockNotificationContent(
+    channelName: 'ch',
+    channelDescription: 'desc',
+    title: 'title',
+    body: 'body',
+  );
+  const rule = WaitDurationUnlockRule(Duration(minutes: 10));
+
   late InMemoryMemoRepository repository;
+  late FakeClock clock;
+  late RecordingNotificationService notifications;
   late ProviderContainer container;
+
+  ProviderContainer createContainer() => ProviderContainer(
+        overrides: [
+          memoRepositoryProvider.overrideWithValue(repository),
+          clockProvider.overrideWithValue(clock),
+          notificationServiceProvider.overrideWithValue(notifications),
+        ],
+      );
 
   setUp(() {
     repository = InMemoryMemoRepository();
-    container = ProviderContainer(
-      overrides: [memoRepositoryProvider.overrideWithValue(repository)],
-    );
+    clock = FakeClock(DateTime(2026, 9, 1, 12));
+    notifications = RecordingNotificationService();
+    container = createContainer();
     addTearDown(container.dispose);
   });
 
   Future<List<Memo>> read() => container.read(memoListProvider.future);
+
+  MemoListNotifier notifier() => container.read(memoListProvider.notifier);
+
+  Future<String> addMemo({
+    String title = 'タイトル',
+    String body = '本文',
+    UnlockRule unlockRule = rule,
+  }) async {
+    await read();
+    await notifier().add(title: title, body: body, unlockRule: unlockRule);
+    return container.read(memoListProvider).requireValue.first.id;
+  }
 
   test('初期状態は空', () async {
     expect(await read(), isEmpty);
   });
 
   test('add でメモが追加され永続化される', () async {
-    await read();
-    await container
-        .read(memoListProvider.notifier)
-        .add(title: 'タイトル', body: '本文');
+    final id = await addMemo();
 
-    final memos = container.read(memoListProvider).requireValue;
-    expect(memos, hasLength(1));
-    expect(memos.single.title, 'タイトル');
     expect(repository.memos, hasLength(1));
+    expect(repository.memos.single.id, id);
+    expect(repository.memos.single.unlockRule, rule);
   });
 
-  test('update で内容が書き換わる', () async {
-    await read();
-    final notifier = container.read(memoListProvider.notifier);
-    await notifier.add(title: '旧', body: '旧本文');
-    final id = container.read(memoListProvider).requireValue.single.id;
+  test('作った直後はロック中で本文が読めない', () async {
+    final id = await addMemo();
 
-    await notifier.edit(id: id, title: '新', body: '新本文');
-
-    final memo = container.read(memoProvider(id));
-    expect(memo?.title, '新');
-    expect(memo?.body, '新本文');
+    final memo = container.read(memoProvider(id))!;
+    expect(memo.lockStateAt(clock.now()).canRead, isFalse);
   });
 
-  test('delete でメモが消える', () async {
-    await read();
-    final notifier = container.read(memoListProvider.notifier);
-    await notifier.add(title: 'a', body: '');
-    final id = container.read(memoListProvider).requireValue.single.id;
+  test('startWaiting で待機が始まり、解錠時刻の通知が予約される', () async {
+    final id = await addMemo();
 
-    await notifier.delete(id);
+    await notifier().startWaiting(id, notification: notification);
+
+    final memo = container.read(memoProvider(id))!;
+    expect(memo.waitStartedAt, clock.now());
+    expect(notifications.permissionRequests, 1);
+    expect(notifications.scheduled.single.memoId, id);
+    expect(
+      notifications.scheduled.single.unlockAt,
+      clock.now().add(rule.duration),
+    );
+  });
+
+  test('待機時間が過ぎると解錠される', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id, notification: notification);
+
+    clock.advance(rule.duration);
+
+    final memo = container.read(memoProvider(id))!;
+    expect(memo.lockStateAt(clock.now()).canRead, isTrue);
+  });
+
+  test('cancelWaiting で待機がリセットされ、通知も取り消される', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id, notification: notification);
+
+    await notifier().cancelWaiting(id);
+
+    expect(container.read(memoProvider(id))!.waitStartedAt, isNull);
+    expect(notifications.canceled, [id]);
+
+    // 待ち直しになるので、元の待機時間が過ぎていても読めない。
+    clock.advance(rule.duration);
+    expect(
+      container.read(memoProvider(id))!.lockStateAt(clock.now()).canRead,
+      isFalse,
+    );
+  });
+
+  test('delete で通知も取り消される', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id, notification: notification);
+
+    await notifier().delete(id);
 
     expect(container.read(memoListProvider).requireValue, isEmpty);
-    expect(repository.memos, isEmpty);
+    expect(notifications.canceled, [id]);
+  });
+
+  test('解錠中は編集できる', () async {
+    final id = await addMemo(title: '旧', body: '旧本文');
+    await notifier().startWaiting(id, notification: notification);
+    clock.advance(rule.duration);
+
+    final saved = await notifier().edit(id: id, title: '新', body: '新本文');
+
+    expect(saved, isTrue);
+    expect(container.read(memoProvider(id))!.body, '新本文');
+  });
+
+  test('ロック中は編集を受け付けない', () async {
+    final id = await addMemo(title: '旧', body: '旧本文');
+
+    final saved = await notifier().edit(id: id, title: '新', body: '新本文');
+
+    expect(saved, isFalse);
+    expect(container.read(memoProvider(id))!.body, '旧本文');
+  });
+
+  test('settleUnlock は解錠時刻を記録する', () async {
+    final id = await addMemo();
+    final startedAt = clock.now();
+    await notifier().startWaiting(id, notification: notification);
+    clock.advance(rule.duration + const Duration(seconds: 30));
+
+    await notifier().settleUnlock(id);
+
+    // 記録するのは検知した時刻ではなく、実際に解錠された時刻。
+    expect(
+      container.read(memoProvider(id))!.unlockedAt,
+      startedAt.add(rule.duration),
+    );
+  });
+
+  test('refresh は再ロックされたメモの待機状態を片付ける', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id, notification: notification);
+    clock.advance(rule.duration + UnlockPolicy.openWindow);
+
+    await notifier().refresh();
+
+    expect(container.read(memoProvider(id))!.waitStartedAt, isNull);
+    expect(repository.memos.single.waitStartedAt, isNull);
+  });
+
+  test('refresh は待機中のメモには触らない', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id, notification: notification);
+    final startedAt = container.read(memoProvider(id))!.waitStartedAt;
+    clock.advance(const Duration(minutes: 1));
+
+    await notifier().refresh();
+
+    expect(container.read(memoProvider(id))!.waitStartedAt, startedAt);
+  });
+
+  test('アプリを再起動しても待機の途中経過が残る', () async {
+    final id = await addMemo();
+    await notifier().startWaiting(id, notification: notification);
+    clock.advance(const Duration(minutes: 4));
+
+    // 保存済みデータだけを引き継いで作り直す。
+    container.dispose();
+    container = createContainer();
+    addTearDown(container.dispose);
+    await read();
+
+    final state = container.read(memoProvider(id))!.lockStateAt(clock.now());
+    expect(state.canRead, isFalse);
+    expect(
+      container.read(memoProvider(id))!.waitStartedAt,
+      DateTime(2026, 9, 1, 12),
+    );
   });
 
   test('一覧は更新日時の新しい順に並ぶ', () async {
@@ -93,9 +219,7 @@ void main() {
         updatedAt: now.add(const Duration(days: 1)),
       ),
     ]);
-    container = ProviderContainer(
-      overrides: [memoRepositoryProvider.overrideWithValue(repository)],
-    );
+    container = createContainer();
     addTearDown(container.dispose);
 
     final memos = await read();

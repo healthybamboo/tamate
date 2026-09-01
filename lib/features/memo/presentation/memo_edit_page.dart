@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/clock/clock.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
+import '../domain/unlock_policy.dart';
+import '../domain/unlock_rule.dart';
+import 'duration_format.dart';
 
 /// メモの新規作成 / 編集画面。
 ///
-/// [memoId] が null なら新規作成。
+/// [memoId] が null なら新規作成。編集は解錠中のメモだけができる。
 class MemoEditPage extends ConsumerStatefulWidget {
   const MemoEditPage({super.key, this.memoId});
 
@@ -19,6 +23,9 @@ class MemoEditPage extends ConsumerStatefulWidget {
 class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _bodyController;
+
+  /// 新規作成時に選んでいる待機時間。作成後は変更できない。
+  Duration _waitDuration = UnlockPolicy.defaultWait;
 
   bool get _isNew => widget.memoId == null;
 
@@ -38,92 +45,143 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   }
 
   Future<void> _save() async {
+    final l10n = AppLocalizations.of(context);
     final notifier = ref.read(memoListProvider.notifier);
     final title = _titleController.text;
     final body = _bodyController.text;
 
     if (_isNew) {
-      await notifier.add(title: title, body: body);
+      await notifier.add(
+        title: title,
+        body: body,
+        unlockRule: WaitDurationUnlockRule(_waitDuration),
+      );
     } else {
-      await notifier.edit(id: widget.memoId!, title: title, body: body);
+      final saved = await notifier.edit(
+        id: widget.memoId!,
+        title: title,
+        body: body,
+      );
+      if (!saved) {
+        // 入力している間に閲覧可能時間が切れた場合。
+        _leave(message: l10n.editRejectedRelocked);
+        return;
+      }
     }
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    _leave();
   }
 
-  Future<void> _delete() async {
-    final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        content: Text(l10n.deleteConfirmMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.actionCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.actionDelete),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) {
+  /// 画面を閉じる。[message] があればスナックバーで知らせる。
+  void _leave({String? message}) {
+    if (!mounted) {
       return;
     }
-    await ref.read(memoListProvider.notifier).delete(widget.memoId!);
-    if (mounted) {
-      Navigator.of(context).pop();
+    if (message != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
+    if (!_isNew) {
+      final memo = ref.watch(memoProvider(widget.memoId!));
+      final canEdit =
+          memo?.lockStateAt(ref.read(clockProvider).now()).canRead ?? false;
+      if (!canEdit) {
+        // 再ロックされた、あるいは削除された。編集させずに戻す。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _leave(message: l10n.editRejectedRelocked);
+        });
+        return const Scaffold(body: SizedBox.shrink());
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_isNew ? l10n.memoNewTitle : l10n.memoEditTitle),
         actions: [
-          if (!_isNew)
-            IconButton(
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_outline),
-              tooltip: l10n.actionDelete,
-            ),
           TextButton(onPressed: _save, child: Text(l10n.actionSave)),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(labelText: l10n.memoTitleLabel),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: TextField(
-                controller: _bodyController,
-                decoration: InputDecoration(
-                  labelText: l10n.memoBodyLabel,
-                  alignLabelWithHint: true,
-                ),
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                keyboardType: TextInputType.multiline,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _titleController,
+                decoration: InputDecoration(labelText: l10n.memoTitleLabel),
+                textInputAction: TextInputAction.next,
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              if (_isNew) ...[
+                _WaitDurationField(
+                  value: _waitDuration,
+                  onChanged: (value) => setState(() => _waitDuration = value),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Expanded(
+                child: TextField(
+                  controller: _bodyController,
+                  decoration: InputDecoration(
+                    labelText: l10n.memoBodyLabel,
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  keyboardType: TextInputType.multiline,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// 待機時間の選択。選択肢は [UnlockPolicy.waitOptions]。
+class _WaitDurationField extends StatelessWidget {
+  const _WaitDurationField({required this.value, required this.onChanged});
+
+  final Duration value;
+  final ValueChanged<Duration> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(l10n.memoWaitDurationLabel, style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<Duration>(
+            segments: [
+              for (final option in UnlockPolicy.waitOptions)
+                ButtonSegment<Duration>(
+                  value: option,
+                  label: Text(formatWaitLength(l10n, option)),
+                ),
+            ],
+            selected: {value},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => onChanged(selection.first),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(l10n.memoWaitDurationHelper, style: theme.textTheme.bodySmall),
+      ],
     );
   }
 }
