@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/clock/clock.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
+import '../domain/generated_code.dart';
 import '../domain/unlock_policy.dart';
 import '../domain/unlock_rule.dart';
 import 'duration_format.dart';
@@ -27,8 +28,8 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   /// 新規作成時に選んでいる待機時間。作成後は変更できない。
   Duration _waitDuration = UnlockPolicy.defaultWait;
 
-  /// 解錠コードを使うか。
-  bool _usePassCode = false;
+  /// 生成した4桁のコードを本文に入れたか。保存すると読めなくなる。
+  bool _generatedCode = false;
 
   bool get _isNew => widget.memoId == null;
 
@@ -54,18 +55,11 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     final body = _bodyController.text;
 
     if (_isNew) {
-      final wait = WaitDurationUnlockRule(_waitDuration);
-      final passCode = _usePassCode ? PassCodeUnlockRule.generate() : null;
-
       await notifier.add(
         title: title,
         body: body,
-        unlockRule: passCode == null ? wait : AllOfUnlockRule([wait, passCode]),
+        unlockRule: WaitDurationUnlockRule(_waitDuration),
       );
-
-      if (passCode != null) {
-        await _showIssuedPassCode(passCode.code);
-      }
     } else {
       final saved = await notifier.edit(
         id: widget.memoId!,
@@ -81,46 +75,6 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     _leave();
   }
 
-  /// 発行した解錠コードを1度だけ見せる。
-  ///
-  /// 控えを見る手段は用意しない。忘れたら開けないことが仕掛けなので。
-  Future<void> _showIssuedPassCode(String code) async {
-    if (!mounted) {
-      return;
-    }
-    final l10n = AppLocalizations.of(context);
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.passCodeIssuedTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              code,
-              style: Theme.of(context)
-                  .textTheme
-                  .displaySmall
-                  ?.copyWith(letterSpacing: 12),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              l10n.passCodeIssuedMessage,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.actionOk),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 画面を閉じる。[message] があればスナックバーで知らせる。
   void _leave({String? message}) {
     if (!mounted) {
@@ -131,6 +85,17 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
           .showSnackBar(SnackBar(content: Text(message)));
     }
     Navigator.of(context).pop();
+  }
+
+  /// 4桁のコードを作って本文に入れる。
+  ///
+  /// スクリーンタイムのパスコードのように「覚えていては意味がない」値を、
+  /// 設定先に入力したあと自分では覚えずに預けるための入り口。
+  void _generateCode() {
+    setState(() {
+      _generatedCode = true;
+      _bodyController.text = GeneratedCode.create();
+    });
   }
 
   @override
@@ -174,15 +139,26 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
                   value: _waitDuration,
                   onChanged: (value) => setState(() => _waitDuration = value),
                 ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _usePassCode,
-                  onChanged: (value) => setState(() => _usePassCode = value),
-                  title: Text(l10n.passCodeUseLabel),
-                  subtitle: Text(l10n.passCodeUseHelper),
+                const SizedBox(height: 16),
+              ],
+              if (_isNew) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _generateCode,
+                    icon: const Icon(Icons.pin_outlined),
+                    label: Text(l10n.generateCodeAction),
+                  ),
                 ),
-                const SizedBox(height: 8),
+                if (_generatedCode)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      l10n.generateCodeNotice,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                const SizedBox(height: 16),
               ],
               Expanded(
                 child: TextField(

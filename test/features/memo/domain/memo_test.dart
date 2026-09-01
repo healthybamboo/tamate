@@ -149,49 +149,6 @@ void main() {
     });
   });
 
-  group('解錠コード', () {
-    const codeRule = AllOfUnlockRule([
-      WaitDurationUnlockRule(Duration(minutes: 3)),
-      PassCodeUnlockRule('0429'),
-    ]);
-
-    Memo codeMemo({DateTime? waitStartedAt, DateTime? unlockedAt}) => Memo(
-          id: 'id',
-          title: 'タイトル',
-          body: '本文',
-          createdAt: createdAt,
-          updatedAt: createdAt,
-          unlockRule: codeRule,
-          waitStartedAt: waitStartedAt,
-          unlockedAt: unlockedAt,
-        );
-
-    test('待機が明けてもコードを入れるまで読めない', () {
-      final state = codeMemo(waitStartedAt: createdAt)
-          .lockStateAt(createdAt.add(const Duration(minutes: 5)));
-
-      expect(state, const MemoAwaitingPassCode());
-      expect(state.canRead, isFalse);
-    });
-
-    test('コードが通ったら閲覧可能時間が始まる', () {
-      final acceptedAt = createdAt.add(const Duration(minutes: 5));
-      final state = codeMemo(waitStartedAt: createdAt, unlockedAt: acceptedAt)
-          .lockStateAt(acceptedAt.add(const Duration(minutes: 1)));
-
-      expect(state.canRead, isTrue);
-      expect(
-        (state as MemoUnlocked).relocksAt,
-        acceptedAt.add(UnlockPolicy.openWindow),
-      );
-    });
-
-    test('コードの判定はメモから引ける', () {
-      expect(codeMemo().acceptsPassCode('0429'), isTrue);
-      expect(codeMemo().acceptsPassCode('0000'), isFalse);
-    });
-  });
-
   group('開封の記録', () {
     test('解錠のたびに履歴が1件増える', () {
       final first = createdAt.add(const Duration(minutes: 10));

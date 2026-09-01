@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,7 +9,6 @@ import '../application/memo_list_notifier.dart';
 import '../domain/memo.dart';
 import '../domain/memo_lock_state.dart';
 import '../domain/unlock_policy.dart';
-import '../domain/unlock_rule.dart';
 import 'duration_format.dart';
 import 'memo_display.dart';
 
@@ -86,8 +84,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
                     now: now,
                     onStopWaiting: _stopWaiting,
                   ),
-                MemoAwaitingPassCode() =>
-                  _PassCodeView(onSubmit: _submitPassCode),
                 MemoUnlocked(:final remaining) => _UnlockedView(
                     memo: memo,
                     remaining: remaining,
@@ -129,9 +125,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
           notification: unlockNotificationContent(l10n, memo),
         );
   }
-
-  Future<bool> _submitPassCode(String code) =>
-      ref.read(memoListProvider.notifier).submitPassCode(widget.memoId, code);
 
   Future<void> _extendWait() async {
     final l10n = AppLocalizations.of(context);
@@ -222,14 +215,6 @@ class _LockedView extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
-        if (memo.unlockRule.requiresPassCode) ...[
-          const SizedBox(height: 8),
-          Text(
-            l10n.passCodePrompt,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
         const SizedBox(height: 32),
         FilledButton.icon(
           onPressed: onOpen,
@@ -296,78 +281,6 @@ class _WaitingView extends StatelessWidget {
           onPressed: onStopWaiting,
           child: Text(l10n.actionStopWaiting),
         ),
-      ],
-    );
-  }
-}
-
-/// 待機は終わったが、解錠コードの入力を待っている状態。
-class _PassCodeView extends StatefulWidget {
-  const _PassCodeView({required this.onSubmit});
-
-  /// 正しければ true を返す。
-  final Future<bool> Function(String code) onSubmit;
-
-  @override
-  State<_PassCodeView> createState() => _PassCodeViewState();
-}
-
-class _PassCodeViewState extends State<_PassCodeView> {
-  final TextEditingController _controller = TextEditingController();
-  bool _wrong = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final accepted = await widget.onSubmit(_controller.text);
-    if (!mounted || accepted) {
-      return;
-    }
-    setState(() => _wrong = true);
-    _controller.clear();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-
-    return _CenteredColumn(
-      children: [
-        Icon(Icons.pin_outlined, size: 64, color: theme.colorScheme.primary),
-        const SizedBox(height: 24),
-        Text(l10n.passCodePrompt, textAlign: TextAlign.center),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: 200,
-          child: TextField(
-            controller: _controller,
-            autofocus: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(PassCodeUnlockRule.digits),
-            ],
-            textAlign: TextAlign.center,
-            style: theme.textTheme.headlineMedium?.copyWith(letterSpacing: 8),
-            decoration: InputDecoration(
-              labelText: l10n.passCodeLabel,
-              errorText: _wrong ? l10n.passCodeWrong : null,
-            ),
-            onChanged: (_) {
-              if (_wrong) {
-                setState(() => _wrong = false);
-              }
-            },
-            onSubmitted: (_) => _submit(),
-          ),
-        ),
-        const SizedBox(height: 24),
-        FilledButton(onPressed: _submit, child: Text(l10n.actionUnlock)),
       ],
     );
   }

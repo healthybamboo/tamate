@@ -56,7 +56,6 @@ void main() {
     required String title,
     required String body,
     String waitLabel = '1分',
-    bool usePassCode = false,
   }) async {
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
@@ -66,26 +65,8 @@ void main() {
     await tester.tap(find.text(waitLabel));
     await tester.pumpAndSettle();
 
-    if (usePassCode) {
-      await tester.tap(find.text('解錠コードを使う'));
-      await tester.pumpAndSettle();
-    }
-
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
-  }
-
-  /// 発行された解錠コードを読み取り、ダイアログを閉じる。
-  Future<String> readIssuedPassCode(WidgetTester tester) async {
-    final code = tester
-        .widgetList<Text>(find.byType(Text))
-        .map((text) => text.data)
-        .firstWhere(
-            (data) => data != null && RegExp(r'^\d{4}$').hasMatch(data))!;
-
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    return code;
   }
 
   testWidgets('起動するとメモ一覧が表示され、新規作成に遷移できる', (tester) async {
@@ -189,41 +170,44 @@ void main() {
     expect(find.text('ここは読めないはず'), findsNothing);
   });
 
-  testWidgets('解錠コード付きのメモは、待機のあとコードを入れるまで読めない', (tester) async {
+  testWidgets('生成した4桁のコードは、保存すると待たないと読めない', (tester) async {
     await pumpApp(tester);
-    await createMemo(
-      tester,
-      title: '秘密',
-      body: 'ここは読めないはず',
-      usePassCode: true,
-    );
 
-    final code = await readIssuedPassCode(tester);
-
-    await tester.tap(find.text('秘密'));
+    await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'タイトル'),
+      'スクリーンタイム',
+    );
+    await tester.tap(find.text('1分'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('4桁のコードを生成'));
+    await tester.pumpAndSettle();
+
+    // 設定先に入力できるよう、保存するまでは見えている。
+    final generated = tester
+        .widget<TextField>(find.widgetWithText(TextField, '本文'))
+        .controller!
+        .text;
+    expect(generated, matches(RegExp(r'^\d{4}$')));
+    expect(find.text(generated), findsOneWidget);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    // 保存した時点でロックされ、一覧からも詳細からも読めない。
+    expect(find.text(generated), findsNothing);
+    await tester.tap(find.text('スクリーンタイム'));
+    await tester.pumpAndSettle();
+    expect(find.text(generated), findsNothing);
+
     await tester.tap(find.text('開く'));
     await tester.pumpAndSettle();
-
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
 
-    // 待機は明けたが、まだ本文は出ない。
-    expect(find.text('ここは読めないはず'), findsNothing);
-    expect(find.text('解錠する'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField).first, '9999');
-    await tester.tap(find.text('解錠する'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('コードが違います'), findsOneWidget);
-    expect(find.text('ここは読めないはず'), findsNothing);
-
-    await tester.enterText(find.byType(TextField).first, code);
-    await tester.tap(find.text('解錠する'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('ここは読めないはず'), findsOneWidget);
+    expect(find.text(generated), findsOneWidget);
   });
 
   testWidgets('開いた回数が記録され、増えると待機時間をのばす提案が出る', (tester) async {

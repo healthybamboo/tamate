@@ -40,17 +40,6 @@ final class MemoWaiting extends MemoLockState {
   int get hashCode => Object.hash(remaining, unlockAt);
 }
 
-/// 待機は終わったが、解錠コードの入力を待っている状態。
-final class MemoAwaitingPassCode extends MemoLockState {
-  const MemoAwaitingPassCode();
-
-  @override
-  bool operator ==(Object other) => other is MemoAwaitingPassCode;
-
-  @override
-  int get hashCode => (MemoAwaitingPassCode).hashCode;
-}
-
 /// 解錠されて本文が読める状態。
 final class MemoUnlocked extends MemoLockState {
   const MemoUnlocked({required this.remaining, required this.relocksAt});

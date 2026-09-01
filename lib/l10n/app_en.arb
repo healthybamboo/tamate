@@ -45,15 +45,6 @@
   "waitLengthDays": "{days, plural, =1{1 day} other{{days} days}}",
   "waitLengthHours": "{hours, plural, =1{1 hour} other{{hours} hours}}",
   "waitLengthMinutes": "{minutes, plural, =1{1 minute} other{{minutes} minutes}}",
-  "stateAwaitingPassCode": "Code required",
-  "passCodePrompt": "Enter the 4 digits shown when you created it",
-  "passCodeLabel": "Unlock code",
-  "passCodeWrong": "That code is wrong",
-  "actionUnlock": "Unlock",
-  "passCodeUseLabel": "Use an unlock code",
-  "passCodeUseHelper": "A 4-digit code is shown once. Forget it and the memo never opens again",
-  "passCodeIssuedTitle": "Unlock code",
-  "passCodeIssuedMessage": "This code is never shown again. Memorize it before closing.",
   "openHistoryTitle": "Open history",
   "openHistoryEmpty": "Never opened yet",
   "suggestExtendTitle": "You open this a lot",
@@ -64,5 +55,7 @@
   "actionLater": "Later",
   "actionReview": "Rewrite",
   "extendedWaitDone": "Next time you will wait {duration}",
-  "openCountLabel": "{count, plural, =1{Opened once} other{Opened {count} times}}"
+  "openCountLabel": "{count, plural, =1{Opened once} other{Opened {count} times}}",
+  "generateCodeAction": "Generate a 4-digit code",
+  "generateCodeNotice": "Enter it where you need it first. Once saved, reading it again means waiting"
 }

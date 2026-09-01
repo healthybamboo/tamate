@@ -98,8 +98,6 @@ class Memo {
           remaining: remaining,
           unlockAt: unlockRule.unlockAt(startedAt),
         );
-      case UnlockNeedsPassCode():
-        return const MemoAwaitingPassCode();
       case UnlockSatisfied():
         // 解錠時刻が計算できるルールは、記録が無くても状態を導出できる。
         return _readableStateAt(
@@ -121,9 +119,6 @@ class Memo {
     }
     return MemoUnlocked(remaining: remaining, relocksAt: relocksAt);
   }
-
-  /// 解錠コードとして [input] を受け付けるか。
-  bool acceptsPassCode(String input) => unlockRule.acceptsPassCode(input);
 
   /// [now] に開こうとした状態。前回の解錠の記録は捨てる。
   Memo startWaiting(DateTime now) => Memo(

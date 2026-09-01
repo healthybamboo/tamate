@@ -5,7 +5,6 @@ import '../../../core/clock/clock.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../data/memo_repository.dart';
 import '../domain/memo.dart';
-import '../domain/memo_lock_state.dart';
 import '../domain/unlock_policy.dart';
 import '../domain/unlock_rule.dart';
 
@@ -112,27 +111,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.cancelWaiting() : e).toList(),
     );
-  }
-
-  /// 解錠コードを入力する。正しければ解錠して true を返す。
-  ///
-  /// 入力の失敗に回数制限は設けない。防ぎたいのは総当たりではなく、
-  /// 「覚えているつもりだった」という記憶の方なので。
-  Future<bool> submitPassCode(String id, String input) async {
-    final now = _now;
-    final memo = _find(id);
-    if (memo == null || memo.lockStateAt(now) is! MemoAwaitingPassCode) {
-      return false;
-    }
-    if (!memo.acceptsPassCode(input)) {
-      return false;
-    }
-
-    await _mutate(
-      (memos) =>
-          memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
-    );
-    return true;
   }
 
   /// 待機時間を1段階のばす。いちばん長いものなら何もせず null を返す。
