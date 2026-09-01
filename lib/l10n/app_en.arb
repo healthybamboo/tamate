@@ -27,7 +27,6 @@
   "lockedWaitNotice": "Opening it starts a {duration} wait",
   "waitingRemaining": "{remaining} left",
   "waitingUnlockAt": "Unlocks at {time}",
-  "waitingKeepClosedNotice": "The wait continues even if you close the app",
   "unlockedRemaining": "Readable for {remaining}",
   "unlockedRelockNotice": "Reading it again later means waiting again",
   "memoWaitDurationLabel": "Wait time",
@@ -57,5 +56,9 @@
   "extendedWaitDone": "Next time you will wait {duration}",
   "openCountLabel": "{count, plural, =1{Opened once} other{Opened {count} times}}",
   "generateCodeAction": "Generate a 4-digit code",
-  "generateCodeNotice": "Enter it where you need it first. Once saved, reading it again means waiting"
+  "generateCodeNotice": "Enter it where you need it first. Once saved, reading it again means waiting",
+  "waitingPauseNotice": "Leaving this screen stops the wait",
+  "waitingPaused": "Paused",
+  "waitingRemainingPaused": "{remaining} left · paused",
+  "openHistoryChartCaption": "Rows are the hour, columns are the day. Darker means more opens"
 }

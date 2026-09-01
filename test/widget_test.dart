@@ -9,6 +9,7 @@ import 'package:tamate/core/notifications/notification_service.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 import 'package:tamate/features/memo/domain/unlock_rule.dart';
+import 'package:tamate/features/memo/presentation/open_history_chart.dart';
 
 import 'support/fakes.dart';
 
@@ -138,6 +139,11 @@ void main() {
     await tester.tap(find.text('開く'));
     await tester.pumpAndSettle();
 
+    clock.advance(const Duration(minutes: 1));
+    await tick(tester);
+    expect(find.text('ここは読めないはず'), findsOneWidget);
+
+    // 解錠してから5分。読める時間は待機と違って現実の時間で過ぎる。
     clock.advance(const Duration(minutes: 6));
     await tick(tester);
 
@@ -247,5 +253,64 @@ void main() {
     expect(find.text('よく開いていますね'), findsNothing);
     // 開封の記録は解錠のたびに増える。
     expect(find.text('4回開いた'), findsOneWidget);
+  });
+
+  testWidgets('待機画面を離れている間は待機が進まない', (tester) async {
+    await pumpApp(tester);
+    await createMemo(tester, title: '秘密', body: 'ここは読めないはず');
+
+    await tester.tap(find.text('秘密'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('開く'));
+    await tester.pumpAndSettle();
+
+    clock.advance(const Duration(seconds: 30));
+    await tick(tester);
+    expect(find.text('あと30秒'), findsOneWidget);
+
+    // 一覧に戻ると計測は止まる。
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    clock.advance(const Duration(hours: 1));
+    await tick(tester);
+
+    expect(find.text('あと30秒・停止中'), findsOneWidget);
+
+    // 戻ってくると続きから。残り30秒ぶん見ていれば解錠される。
+    await tester.tap(find.text('秘密'));
+    await tester.pumpAndSettle();
+    clock.advance(const Duration(seconds: 30));
+    await tick(tester);
+
+    expect(find.text('ここは読めないはず'), findsOneWidget);
+  });
+
+  testWidgets('開封の記録がグラフで出る', (tester) async {
+    repository = InMemoryMemoRepository([
+      Memo(
+        id: 'often',
+        title: 'よく開くメモ',
+        body: '中身',
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 1)),
+        openedAt: [
+          clock.now().subtract(const Duration(days: 1)),
+          clock.now().subtract(const Duration(hours: 2)),
+        ],
+      ),
+    ]);
+
+    await pumpApp(tester);
+    await tester.tap(find.text('よく開くメモ'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OpenHistoryChart), findsNothing);
+
+    await tester.tap(find.text('開封の記録'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OpenHistoryChart), findsOneWidget);
+    expect(find.text('縦が時刻、横が日付。濃いほど回数が多い'), findsOneWidget);
   });
 }

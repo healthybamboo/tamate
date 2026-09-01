@@ -48,7 +48,6 @@
       }
     }
   },
-  "waitingKeepClosedNotice": "アプリを閉じても待機は続きます",
   "unlockedRemaining": "あと{remaining}読めます",
   "@unlockedRemaining": {
     "placeholders": {
@@ -171,5 +170,16 @@
     }
   },
   "generateCodeAction": "4桁のコードを生成",
-  "generateCodeNotice": "先に設定したいところへ入力してください。保存すると、読み直すには待つことになります"
+  "generateCodeNotice": "先に設定したいところへ入力してください。保存すると、読み直すには待つことになります",
+  "waitingPauseNotice": "この画面を離れると待機は止まります",
+  "waitingPaused": "停止中",
+  "waitingRemainingPaused": "あと{remaining}・停止中",
+  "@waitingRemainingPaused": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い"
 }

@@ -22,7 +22,9 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
   @override
   Future<List<Memo>> build() async {
     final memos = await _repository.fetchAll();
-    return _sorted(memos);
+    // 前回アプリが落ちたときに進行中だった待機は、そのぶんを捨てて止める。
+    // 落ちている間は待っていないので、経過に入れてはいけない。
+    return _sorted([for (final memo in memos) memo.dropRunningWait()]);
   }
 
   /// 保存内容を読み直す。
@@ -92,12 +94,56 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       (memos) =>
           memos.map((e) => e.id == id ? e.startWaiting(now) : e).toList(),
     );
+    await _notifications.requestPermission();
+    await _scheduleUnlock(id, notification);
+  }
 
-    final unlockAt = _find(id)?.scheduledUnlockAt;
+  /// 待機の計測を再開する。待機画面に戻ってきたときに呼ぶ。
+  Future<void> resumeWaiting(
+    String id, {
+    required UnlockNotificationContent notification,
+  }) async {
+    final now = _now;
+    final memo = _find(id);
+    if (memo?.wait == null || (memo!.wait!.isRunning)) {
+      return;
+    }
+
+    await _mutate(
+      (memos) =>
+          memos.map((e) => e.id == id ? e.resumeWaiting(now) : e).toList(),
+    );
+    await _scheduleUnlock(id, notification);
+  }
+
+  /// 待機の計測を止める。待機画面を離れたときに呼ぶ。
+  ///
+  /// 経過は残るので、戻ってくれば続きから進む。画面が捨てられる途中でも呼ばれるので、
+  /// Provider から引くものは最初の await より前に済ませておく。
+  Future<void> pauseWaiting(String id) async {
+    final now = _now;
+    final memo = _find(id);
+    if (memo?.wait?.isRunning != true) {
+      return;
+    }
+    final notifications = _notifications;
+
+    await _mutate(
+      (memos) =>
+          memos.map((e) => e.id == id ? e.pauseWaiting(now) : e).toList(),
+    );
+    await notifications.cancelUnlock(id);
+  }
+
+  /// 進んでいる待機の解錠予定時刻に通知を予約する。
+  Future<void> _scheduleUnlock(
+    String id,
+    UnlockNotificationContent notification,
+  ) async {
+    final unlockAt = _find(id)?.scheduledUnlockAt(_now);
     if (unlockAt == null) {
       return;
     }
-    await _notifications.requestPermission();
     await _notifications.scheduleUnlock(
       memoId: id,
       unlockAt: unlockAt,
@@ -134,26 +180,21 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     return next;
   }
 
-  /// 解錠されたことを記録する。閲覧可能時間の起点になる。
-  ///
-  /// 解錠時刻が計算できるルールでは記録しなくても状態は導出できるが、
-  /// 計算できないルール（パズルなど）ではここで残した時刻が起点になる。
+  /// 解錠されたことを記録する。閲覧可能時間の起点になり、開封の履歴にも残る。
   Future<void> settleUnlock(String id) async {
     final now = _now;
     final memo = _find(id);
-    final startedAt = memo?.waitStartedAt;
-    if (memo == null || startedAt == null || memo.unlockedAt != null) {
+    if (memo == null || memo.unlockedAt != null) {
       return;
     }
     if (!memo.lockStateAt(now).canRead) {
       return;
     }
 
-    final unlockedAt = memo.unlockRule.unlockAt(startedAt) ?? now;
+    await _notifications.cancelUnlock(id);
     await _mutate(
-      (memos) => memos
-          .map((e) => e.id == id ? e.markUnlocked(unlockedAt) : e)
-          .toList(),
+      (memos) =>
+          memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
     );
   }
 
@@ -170,10 +211,11 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
   Future<void> _mutate(
     List<Memo> Function(List<Memo> current) transform,
   ) async {
+    final repository = _repository;
     final current = state.valueOrNull ?? const <Memo>[];
     final next = _sorted(transform(current));
     state = AsyncData(next);
-    await _repository.saveAll(next);
+    await repository.saveAll(next);
   }
 
   /// 再ロックされたメモの待機状態を落とす。
@@ -185,18 +227,8 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       .toList();
 
   /// 解錠されたあと、閲覧可能時間まで過ぎたか。待機中は false。
-  bool _isRelocked(Memo memo, DateTime now) {
-    final startedAt = memo.waitStartedAt;
-    if (startedAt == null) {
-      return false;
-    }
-    if (memo.unlockedAt != null) {
-      // 解錠は成立済み。読める時間が残っているかどうかだけの問題。
-      return !memo.lockStateAt(now).canRead;
-    }
-    final progress = memo.unlockRule.progressAt(startedAt: startedAt, now: now);
-    return progress is UnlockSatisfied && !memo.lockStateAt(now).canRead;
-  }
+  bool _isRelocked(Memo memo, DateTime now) =>
+      memo.unlockedAt != null && !memo.lockStateAt(now).canRead;
 
   bool _sameMemos(List<Memo> a, List<Memo> b) {
     if (a.length != b.length) {

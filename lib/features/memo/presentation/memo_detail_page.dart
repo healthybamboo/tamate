@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/clock/clock.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
 import '../domain/memo.dart';
@@ -11,6 +14,7 @@ import '../domain/memo_lock_state.dart';
 import '../domain/unlock_policy.dart';
 import 'duration_format.dart';
 import 'memo_display.dart';
+import 'open_history_chart.dart';
 
 /// メモを開く画面。
 ///
@@ -26,11 +30,58 @@ class MemoDetailPage extends ConsumerStatefulWidget {
 }
 
 class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
-  /// 解錠時刻を記録済みの待機。待ち直したらまた記録する。
-  DateTime? _settledWait;
+  /// 解錠を記録済みか。待ち直したらまた記録する。
+  bool _settled = false;
 
   /// 提案を「あとで」で閉じたか。閉じるのはこの表示の間だけ。
   bool _suggestionDismissed = false;
+
+  /// アプリが前面にあるか。背面では待機を進めない。
+  bool _foreground = true;
+
+  late final AppLifecycleListener _lifecycleListener;
+
+  /// 直近のビルドで組み立てた通知の文面。再開時の予約に使う。
+  UnlockNotificationContent? _notification;
+
+  /// 画面が捨てられたあとにも待機を止めるので、ここで掴んでおく。
+  late final MemoListNotifier _notifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _notifier = ref.read(memoListProvider.notifier);
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) {
+        final foreground = state == AppLifecycleState.resumed;
+        if (foreground == _foreground) {
+          return;
+        }
+        _foreground = foreground;
+        // 背面に回ったら待機は止める。戻ってきたらビルドで再開する。
+        if (!foreground) {
+          unawaited(_notifier.pauseWaiting(widget.memoId));
+        } else {
+          setState(() {});
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    // 画面を離れたら待機は止まる。経過は残るので続きから待てる。
+    // 破棄はウィジェットツリーの更新中に起きるので、フレームのあとに回す。
+    final notifier = _notifier;
+    final memoId = widget.memoId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // アプリごと畳まれていれば保存先はもう無い。その場合も次の起動で
+      // 進行中だったぶんは捨てるので、ここで諦めて構わない。
+      unawaited(notifier.pauseWaiting(memoId).catchError((Object _) {}));
+    });
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +100,12 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     final now =
         memo.lockStateAt(clockNow) is MemoLocked ? clockNow : watchNow(ref);
     final lockState = memo.lockStateAt(now);
+    _notification = unlockNotificationContent(l10n, memo);
 
     if (lockState.canRead && memo.unlockedAt == null) {
-      _settleUnlock(memo.waitStartedAt);
+      _settleUnlock();
+    } else if (lockState is MemoWaiting && !lockState.running && _foreground) {
+      _resumeWaiting();
     }
 
     return Scaffold(
@@ -78,9 +132,8 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
               child: switch (lockState) {
                 MemoLocked() =>
                   _LockedView(memo: memo, onOpen: () => _open(memo)),
-                MemoWaiting(:final remaining, :final unlockAt) => _WaitingView(
+                MemoWaiting(:final remaining) => _WaitingView(
                     remaining: remaining,
-                    unlockAt: unlockAt,
                     now: now,
                     onStopWaiting: _stopWaiting,
                   ),
@@ -104,26 +157,41 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     );
   }
 
-  /// 解錠を検知した時刻の記録。ビルド中に書き換えないよう1フレーム待つ。
-  void _settleUnlock(DateTime? waitStartedAt) {
-    if (_settledWait == waitStartedAt) {
+  /// 解錠の記録。ビルド中に書き換えないよう1フレーム待つ。
+  void _settleUnlock() {
+    if (_settled) {
       return;
     }
-    _settledWait = waitStartedAt;
+    _settled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        unawaited(_notifier.settleUnlock(widget.memoId));
       }
-      ref.read(memoListProvider.notifier).settleUnlock(widget.memoId);
+    });
+  }
+
+  /// 待機の再開。画面を見ている間だけ進む。
+  void _resumeWaiting() {
+    final notification = _notification;
+    if (notification == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _foreground) {
+        unawaited(
+          _notifier.resumeWaiting(widget.memoId, notification: notification),
+        );
+      }
     });
   }
 
   Future<void> _open(Memo memo) async {
     final l10n = AppLocalizations.of(context);
-    await ref.read(memoListProvider.notifier).startWaiting(
-          memo.id,
-          notification: unlockNotificationContent(l10n, memo),
-        );
+    _settled = false;
+    await _notifier.startWaiting(
+      memo.id,
+      notification: unlockNotificationContent(l10n, memo),
+    );
   }
 
   Future<void> _extendWait() async {
@@ -230,13 +298,11 @@ class _LockedView extends StatelessWidget {
 class _WaitingView extends StatelessWidget {
   const _WaitingView({
     required this.remaining,
-    required this.unlockAt,
     required this.now,
     required this.onStopWaiting,
   });
 
   final Duration? remaining;
-  final DateTime? unlockAt;
   final DateTime now;
   final VoidCallback onStopWaiting;
 
@@ -245,6 +311,8 @@ class _WaitingView extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final locale = Localizations.localeOf(context).toLanguageTag();
+    final left = remaining;
+    final unlockAt = left == null ? null : now.add(left);
 
     return _CenteredColumn(
       children: [
@@ -257,22 +325,22 @@ class _WaitingView extends StatelessWidget {
         Text(l10n.stateWaiting, style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
         Text(
-          remaining == null
+          left == null
               ? l10n.lockedBodyHidden
-              : l10n.waitingRemaining(formatRemaining(l10n, remaining!)),
+              : l10n.waitingRemaining(formatRemaining(l10n, left)),
           style: theme.textTheme.displaySmall,
           textAlign: TextAlign.center,
         ),
         if (unlockAt != null) ...[
           const SizedBox(height: 8),
           Text(
-            l10n.waitingUnlockAt(formatUnlockTime(locale, unlockAt!, now)),
+            l10n.waitingUnlockAt(formatUnlockTime(locale, unlockAt, now)),
             style: theme.textTheme.bodyMedium,
           ),
         ],
         const SizedBox(height: 24),
         Text(
-          l10n.waitingKeepClosedNotice,
+          l10n.waitingPauseNotice,
           style: theme.textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
@@ -508,7 +576,21 @@ class _OpenHistory extends StatelessWidget {
                     style: theme.textTheme.bodySmall,
                   ),
                 )
-              else
+              else ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      OpenHistoryChart(openedAt: memo.openedAt, now: now),
+                      const SizedBox(height: 8),
+                      Text(
+                        l10n.openHistoryChartCaption,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
                 for (final at in history)
                   ListTile(
                     dense: true,
@@ -517,6 +599,7 @@ class _OpenHistory extends StatelessWidget {
                       style: theme.textTheme.bodyMedium,
                     ),
                   ),
+              ],
             ],
           ),
         ],
