@@ -181,5 +181,5 @@
       }
     }
   },
-  "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い"
+  "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録"
 }

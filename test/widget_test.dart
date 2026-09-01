@@ -311,6 +311,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(OpenHistoryChart), findsOneWidget);
-    expect(find.text('縦が時刻、横が日付。濃いほど回数が多い'), findsOneWidget);
+    expect(
+      find.text('縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('古い記録があると、その日まで図が伸びる', (tester) async {
+    repository = InMemoryMemoRepository([
+      Memo(
+        id: 'old',
+        title: '古いメモ',
+        body: '中身',
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 1)),
+        openedAt: [clock.now().subtract(const Duration(days: 100))],
+      ),
+    ]);
+
+    await pumpApp(tester);
+    await tester.tap(find.text('古いメモ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('開封の記録'));
+    await tester.pumpAndSettle();
+
+    // 101日ぶんの幅がある（既定の2週間ではない）。
+    final painter = tester.widget<CustomPaint>(
+      find.descendant(
+        of: find.byType(OpenHistoryChart),
+        matching: find.byType(CustomPaint),
+      ),
+    );
+    expect(painter.size.width, 101 * 16);
   });
 }

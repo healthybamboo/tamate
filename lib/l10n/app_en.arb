@@ -60,5 +60,5 @@
   "waitingPauseNotice": "Leaving this screen stops the wait",
   "waitingPaused": "Paused",
   "waitingRemainingPaused": "{remaining} left · paused",
-  "openHistoryChartCaption": "Rows are the hour, columns are the day. Darker means more opens"
+  "openHistoryChartCaption": "Rows are the hour, columns are the day. Darker means more opens; scroll left for older"
 }
