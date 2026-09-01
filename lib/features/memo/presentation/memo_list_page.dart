@@ -92,16 +92,21 @@ class _MemoTile extends ConsumerWidget {
 
   IconData _iconFor(MemoLockState state) => switch (state) {
         MemoLocked() => Icons.lock_outline,
-        MemoWaiting() => Icons.hourglass_bottom,
+        MemoWaiting(:final running) =>
+          running ? Icons.hourglass_bottom : Icons.pause_circle_outline,
         MemoUnlocked() => Icons.lock_open_outlined,
       };
 
   String _statusFor(AppLocalizations l10n, MemoLockState state) =>
       switch (state) {
         MemoLocked() => l10n.stateLocked,
-        MemoWaiting(:final remaining) => remaining == null
-            ? l10n.stateWaiting
-            : l10n.waitingRemaining(formatRemaining(l10n, remaining)),
+        MemoWaiting(:final remaining, :final running) => switch (remaining) {
+            null => running ? l10n.stateWaiting : l10n.waitingPaused,
+            final left when running =>
+              l10n.waitingRemaining(formatRemaining(l10n, left)),
+            final left =>
+              l10n.waitingRemainingPaused(formatRemaining(l10n, left)),
+          },
         MemoUnlocked(:final remaining) =>
           l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
       };

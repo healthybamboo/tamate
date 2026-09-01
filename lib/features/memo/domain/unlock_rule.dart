@@ -49,21 +49,19 @@ abstract class UnlockRule {
   /// 保存時の識別子。
   String get type;
 
-  /// [startedAt] に開こうとしたメモが、[now] 時点で解錠条件を満たしているか。
-  UnlockProgress progressAt({
-    required DateTime startedAt,
-    required DateTime now,
-  });
-
-  /// 解錠される時刻。事前に分からないルールでは null を返す。
-  ///
-  /// 通知の予約に使う。
-  DateTime? unlockAt(DateTime startedAt);
+  /// 待機画面を見ていた時間が [elapsed] のとき、解錠条件を満たしているか。
+  UnlockProgress progressFor(Duration elapsed);
 
   /// 解錠までにかかる時間。時間で測れないルールでは null を返す。
   ///
-  /// 「開くと10分待つことになります」という案内の表示に使う。
+  /// 「開くと3分待つことになります」という案内の表示に使う。
   Duration? get expectedWait;
+
+  /// 待機時間を [duration] に差し替えたルール。
+  ///
+  /// 待機時間を持たないルールは自分をそのまま返す。開封回数に応じて
+  /// 待機時間を伸ばす提案から使う。
+  UnlockRule withWaitDuration(Duration duration) => this;
 
   Map<String, dynamic> toJson();
 }
@@ -89,11 +87,8 @@ final class WaitDurationUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressAt({
-    required DateTime startedAt,
-    required DateTime now,
-  }) {
-    final remaining = unlockAt(startedAt).difference(now);
+  UnlockProgress progressFor(Duration elapsed) {
+    final remaining = duration - elapsed;
     if (remaining <= Duration.zero) {
       return const UnlockSatisfied();
     }
@@ -101,10 +96,11 @@ final class WaitDurationUnlockRule extends UnlockRule {
   }
 
   @override
-  DateTime unlockAt(DateTime startedAt) => startedAt.add(duration);
+  Duration? get expectedWait => duration;
 
   @override
-  Duration? get expectedWait => duration;
+  UnlockRule withWaitDuration(Duration duration) =>
+      WaitDurationUnlockRule(duration);
 
   @override
   Map<String, dynamic> toJson() => {

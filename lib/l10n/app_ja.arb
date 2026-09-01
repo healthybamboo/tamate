@@ -48,7 +48,6 @@
       }
     }
   },
-  "waitingKeepClosedNotice": "アプリを閉じても待機は続きます",
   "unlockedRemaining": "あと{remaining}読めます",
   "@unlockedRemaining": {
     "placeholders": {
@@ -137,5 +136,50 @@
         "type": "int"
       }
     }
-  }
+  },
+  "openHistoryTitle": "開封の記録",
+  "openHistoryEmpty": "まだ開いたことがありません",
+  "suggestExtendTitle": "よく開いていますね",
+  "suggestExtendMessage": "待機時間を{duration}にしますか？",
+  "@suggestExtendMessage": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "suggestReviewTitle": "何度も開いています",
+  "suggestReviewMessage": "内容を見直すか、思い切って消してしまうのもいいかもしれません",
+  "actionExtendWait": "のばす",
+  "actionLater": "あとで",
+  "actionReview": "見直す",
+  "extendedWaitDone": "次からは{duration}待ちます",
+  "@extendedWaitDone": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "openCountLabel": "{count}回開いた",
+  "@openCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "generateCodeAction": "4桁のコードを生成",
+  "generateCodeNotice": "先に設定したいところへ入力してください。保存すると、読み直すには待つことになります",
+  "waitingPauseNotice": "この画面を離れると待機は止まります",
+  "waitingPaused": "停止中",
+  "waitingRemainingPaused": "あと{remaining}・停止中",
+  "@waitingRemainingPaused": {
+    "placeholders": {
+      "remaining": {
+        "type": "String"
+      }
+    }
+  },
+  "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録"
 }

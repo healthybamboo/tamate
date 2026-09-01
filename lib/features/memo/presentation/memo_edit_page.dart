@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/clock/clock.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
+import '../domain/generated_code.dart';
 import '../domain/unlock_policy.dart';
 import '../domain/unlock_rule.dart';
 import 'duration_format.dart';
@@ -26,6 +27,9 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
 
   /// 新規作成時に選んでいる待機時間。作成後は変更できない。
   Duration _waitDuration = UnlockPolicy.defaultWait;
+
+  /// 生成した4桁のコードを本文に入れたか。保存すると読めなくなる。
+  bool _generatedCode = false;
 
   bool get _isNew => widget.memoId == null;
 
@@ -83,6 +87,17 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     Navigator.of(context).pop();
   }
 
+  /// 4桁のコードを作って本文に入れる。
+  ///
+  /// スクリーンタイムのパスコードのように「覚えていては意味がない」値を、
+  /// 設定先に入力したあと自分では覚えずに預けるための入り口。
+  void _generateCode() {
+    setState(() {
+      _generatedCode = true;
+      _bodyController.text = GeneratedCode.create();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -124,6 +139,25 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
                   value: _waitDuration,
                   onChanged: (value) => setState(() => _waitDuration = value),
                 ),
+                const SizedBox(height: 16),
+              ],
+              if (_isNew) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _generateCode,
+                    icon: const Icon(Icons.pin_outlined),
+                    label: Text(l10n.generateCodeAction),
+                  ),
+                ),
+                if (_generatedCode)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      l10n.generateCodeNotice,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
                 const SizedBox(height: 16),
               ],
               Expanded(

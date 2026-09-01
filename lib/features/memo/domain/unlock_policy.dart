@@ -13,4 +13,22 @@ abstract final class UnlockPolicy {
 
   /// 解錠してから再びロックされるまでの時間。メモごとではなくアプリ共通。
   static const Duration openWindow = Duration(minutes: 5);
+
+  /// 待機時間を伸ばす提案を出し始める開封回数。
+  static const int openCountForWaitSuggestion = 3;
+
+  /// 内容の見直しか削除を提案し始める開封回数。
+  static const int openCountForReviewSuggestion = 5;
+
+  /// [current] の次に長い待機時間。いちばん長いものなら null。
+  ///
+  /// 提案から伸ばすときに使う。伸ばす方向にしか動かせないようにしてある。
+  static Duration? nextWaitOption(Duration current) {
+    for (final option in waitOptions) {
+      if (option > current) {
+        return option;
+      }
+    }
+    return null;
+  }
 }

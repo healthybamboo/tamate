@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'memo_lock_state.dart';
+import 'memo_wait.dart';
 import 'unlock_policy.dart';
 import 'unlock_rule.dart';
 
@@ -18,8 +19,9 @@ class Memo {
     required this.createdAt,
     required this.updatedAt,
     this.unlockRule = UnlockRule.fallback,
-    this.waitStartedAt,
+    this.wait,
     this.unlockedAt,
+    this.openedAt = const [],
   });
 
   /// 保存データからメモを復元する。
@@ -27,7 +29,7 @@ class Memo {
   /// 解錠まわりのフィールドは後から足したものなので、無くても読めるようにしてある。
   factory Memo.fromJson(Map<String, dynamic> json) {
     final rule = json['unlockRule'];
-    final waitStartedAt = json['waitStartedAt'];
+    final wait = json['wait'];
     final unlockedAt = json['unlockedAt'];
 
     return Memo(
@@ -39,8 +41,9 @@ class Memo {
       unlockRule: rule is Map<String, dynamic>
           ? UnlockRule.fromJson(rule)
           : UnlockRule.fallback,
-      waitStartedAt: _parseDate(waitStartedAt),
+      wait: wait is Map<String, dynamic> ? MemoWait.fromJson(wait) : null,
       unlockedAt: _parseDate(unlockedAt),
+      openedAt: _parseDates(json['openedAt']),
     );
   }
 
@@ -53,8 +56,19 @@ class Memo {
   /// このメモの解錠条件。
   final UnlockRule unlockRule;
 
-  /// 開こうとした時刻。null なら待機を始めていない。
-  final DateTime? waitStartedAt;
+  /// 待機の経過。null なら待機を始めていない。
+  ///
+  /// 進むのは待機画面を見ている間だけ。詳細は `docs/spec.md` を参照。
+  final MemoWait? wait;
+
+  /// 本文が読める状態になった時刻の履歴。古い順。
+  ///
+  /// 閲覧可能時間の内側で画面を出入りしても増えない。再ロックされたあとに
+  /// もう一度開けば1件増える。
+  final List<DateTime> openedAt;
+
+  /// これまでに開いた回数。
+  int get openCount => openedAt.length;
 
   /// 解錠を検知した時刻。閲覧可能時間の起点。
   ///
@@ -62,37 +76,58 @@ class Memo {
   /// 実際に使うのは解錠時刻を計算できないルールの場合。
   final DateTime? unlockedAt;
 
-  /// 解錠される予定の時刻。待機していない、または計算できないルールなら null。
-  DateTime? get scheduledUnlockAt {
-    final startedAt = waitStartedAt;
-    return startedAt == null ? null : unlockRule.unlockAt(startedAt);
+  /// 待機が今のまま進んだ場合に解錠される時刻。
+  ///
+  /// 待機が止まっている、または時間で測れないルールなら null。通知の予約に使う。
+  DateTime? scheduledUnlockAt(DateTime now) {
+    final current = wait;
+    if (current == null || !current.isRunning) {
+      return null;
+    }
+    final progress = unlockRule.progressFor(current.elapsedAt(now));
+    return switch (progress) {
+      UnlockPending(:final remaining) =>
+        remaining == null ? null : now.add(remaining),
+      UnlockSatisfied() => now,
+    };
   }
 
   /// [now] 時点での解錠状態。
   MemoLockState lockStateAt(DateTime now) {
-    final startedAt = waitStartedAt;
-    if (startedAt == null) {
+    final openedAt = unlockedAt;
+    if (openedAt != null) {
+      // 解錠が成立している。あとは閲覧可能時間が残っているかどうか。
+      return _readableStateAt(openedAt: openedAt, now: now);
+    }
+
+    final current = wait;
+    if (current == null) {
       return const MemoLocked();
     }
 
-    switch (unlockRule.progressAt(startedAt: startedAt, now: now)) {
+    switch (unlockRule.progressFor(current.elapsedAt(now))) {
       case UnlockPending(:final remaining):
-        return MemoWaiting(
-          remaining: remaining,
-          unlockAt: unlockRule.unlockAt(startedAt),
-        );
+        return MemoWaiting(remaining: remaining, running: current.isRunning);
       case UnlockSatisfied():
-        final openedAt = unlockedAt ?? unlockRule.unlockAt(startedAt) ?? now;
-        final relocksAt = openedAt.add(UnlockPolicy.openWindow);
-        final remaining = relocksAt.difference(now);
-        if (remaining <= Duration.zero) {
-          return const MemoLocked();
-        }
-        return MemoUnlocked(remaining: remaining, relocksAt: relocksAt);
+        // 待機が終わった瞬間は画面を見ているはずなので、そのまま解錠にする。
+        return _readableStateAt(openedAt: unlockedAt ?? now, now: now);
     }
   }
 
-  /// [now] に開こうとした状態。前回の解錠の記録は捨てる。
+  /// [openedAt] に解錠したメモの、[now] 時点の状態。
+  MemoLockState _readableStateAt({
+    required DateTime openedAt,
+    required DateTime now,
+  }) {
+    final relocksAt = openedAt.add(UnlockPolicy.openWindow);
+    final remaining = relocksAt.difference(now);
+    if (remaining <= Duration.zero) {
+      return const MemoLocked();
+    }
+    return MemoUnlocked(remaining: remaining, relocksAt: relocksAt);
+  }
+
+  /// [now] から待機を始めた状態。前回の解錠の記録は捨てる。
   Memo startWaiting(DateTime now) => Memo(
         id: id,
         title: title,
@@ -100,10 +135,29 @@ class Memo {
         createdAt: createdAt,
         updatedAt: updatedAt,
         unlockRule: unlockRule,
-        waitStartedAt: now,
+        wait: MemoWait.startedAt(now),
+        openedAt: openedAt,
       );
 
-  /// 待機をやめてロック中に戻した状態。
+  /// 待機の計測を再開した状態。待機画面に戻ってきたときに使う。
+  Memo resumeWaiting(DateTime now) {
+    final current = wait;
+    return current == null ? this : _withWait(current.resume(now));
+  }
+
+  /// 待機の計測を止めた状態。ここまでの経過は残る。
+  Memo pauseWaiting(DateTime now) {
+    final current = wait;
+    return current == null ? this : _withWait(current.pause(now));
+  }
+
+  /// 進行中だったぶんを捨てて止めた状態。アプリが落とされた場合に使う。
+  Memo dropRunningWait() {
+    final current = wait;
+    return current == null ? this : _withWait(current.dropRunning());
+  }
+
+  /// 待機をやめてロック中に戻した状態。経過も解錠の記録も捨てる。
   Memo cancelWaiting() => Memo(
         id: id,
         title: title,
@@ -111,9 +165,12 @@ class Memo {
         createdAt: createdAt,
         updatedAt: updatedAt,
         unlockRule: unlockRule,
+        openedAt: openedAt,
       );
 
-  /// 解錠を検知した時刻を記録した状態。
+  /// 解錠を検知した時刻を記録した状態。開封の履歴にも1件残す。
+  ///
+  /// 待機の経過はここで役目を終えるので捨てる。
   Memo markUnlocked(DateTime at) => Memo(
         id: id,
         title: title,
@@ -121,8 +178,35 @@ class Memo {
         createdAt: createdAt,
         updatedAt: updatedAt,
         unlockRule: unlockRule,
-        waitStartedAt: waitStartedAt,
         unlockedAt: at,
+        openedAt: [...openedAt, at],
+      );
+
+  Memo _withWait(MemoWait wait) => Memo(
+        id: id,
+        title: title,
+        body: body,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        unlockRule: unlockRule,
+        wait: wait,
+        unlockedAt: unlockedAt,
+        openedAt: openedAt,
+      );
+
+  /// 待機時間を [duration] に差し替えた状態。
+  ///
+  /// 作成後に待機時間を変えられるのは、開封回数に応じた提案から伸ばすときだけ。
+  Memo withWaitDuration(Duration duration) => Memo(
+        id: id,
+        title: title,
+        body: body,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        unlockRule: unlockRule.withWaitDuration(duration),
+        wait: wait,
+        unlockedAt: unlockedAt,
+        openedAt: openedAt,
       );
 
   /// 本文まわりだけを書き換えた状態。解錠の状態は引き継ぐ。
@@ -138,8 +222,9 @@ class Memo {
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         unlockRule: unlockRule,
-        waitStartedAt: waitStartedAt,
+        wait: wait,
         unlockedAt: unlockedAt,
+        openedAt: openedAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -149,9 +234,23 @@ class Memo {
         'createdAt': createdAt.toUtc().toIso8601String(),
         'updatedAt': updatedAt.toUtc().toIso8601String(),
         'unlockRule': unlockRule.toJson(),
-        'waitStartedAt': waitStartedAt?.toUtc().toIso8601String(),
+        'wait': wait?.toJson(),
         'unlockedAt': unlockedAt?.toUtc().toIso8601String(),
+        'openedAt': [
+          for (final at in openedAt) at.toUtc().toIso8601String(),
+        ],
       };
+
+  /// ISO8601 文字列の配列を [DateTime] の並びにする。読めない要素は捨てる。
+  static List<DateTime> _parseDates(Object? value) {
+    if (value is! List) {
+      return const [];
+    }
+    return [
+      for (final item in value)
+        if (_parseDate(item) case final date?) date,
+    ];
+  }
 
   /// ISO8601 文字列を [DateTime] にする。読めない値は null。
   static DateTime? _parseDate(Object? value) {
@@ -171,8 +270,21 @@ class Memo {
           other.createdAt == createdAt &&
           other.updatedAt == updatedAt &&
           other.unlockRule == unlockRule &&
-          other.waitStartedAt == waitStartedAt &&
-          other.unlockedAt == unlockedAt;
+          other.wait == wait &&
+          other.unlockedAt == unlockedAt &&
+          _sameDates(other.openedAt, openedAt);
+
+  static bool _sameDates(List<DateTime> a, List<DateTime> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   int get hashCode => Object.hash(
@@ -182,7 +294,8 @@ class Memo {
         createdAt,
         updatedAt,
         unlockRule,
-        waitStartedAt,
+        wait,
         unlockedAt,
+        Object.hashAll(openedAt),
       );
 }

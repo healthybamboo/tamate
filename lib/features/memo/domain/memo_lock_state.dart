@@ -21,23 +21,25 @@ final class MemoLocked extends MemoLockState {
 }
 
 /// 開こうとして待っている状態。
+///
+/// [running] が false なら画面を離れていて、残り時間は減っていない。
 final class MemoWaiting extends MemoLockState {
-  const MemoWaiting({required this.remaining, required this.unlockAt});
+  const MemoWaiting({required this.remaining, required this.running});
 
   /// 解錠までの残り時間。時間で測れないルールでは null。
   final Duration? remaining;
 
-  /// 解錠される時刻。事前に分からないルールでは null。
-  final DateTime? unlockAt;
+  /// 待機が進んでいるか。
+  final bool running;
 
   @override
   bool operator ==(Object other) =>
       other is MemoWaiting &&
       other.remaining == remaining &&
-      other.unlockAt == unlockAt;
+      other.running == running;
 
   @override
-  int get hashCode => Object.hash(remaining, unlockAt);
+  int get hashCode => Object.hash(remaining, running);
 }
 
 /// 解錠されて本文が読める状態。
