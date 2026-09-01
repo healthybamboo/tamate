@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tamate/app.dart';
 import 'package:tamate/core/clock/clock.dart';
-import 'package:tamate/core/notifications/notification_service.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 import 'package:tamate/features/memo/domain/unlock_rule.dart';
@@ -42,8 +41,6 @@ void main() {
           clockProvider.overrideWithValue(clock),
           // 本物は1秒ごとのタイマーで動くので、テストでは手で流す。
           nowProvider.overrideWith((ref) => ticks.stream),
-          notificationServiceProvider
-              .overrideWithValue(RecordingNotificationService()),
         ],
         child: const TamateApp(),
       ),
@@ -70,13 +67,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('起動するとメモ一覧が表示され、新規作成に遷移できる', (tester) async {
+  testWidgets('メモが無いときは、作るところまで案内する', (tester) async {
     await pumpApp(tester);
 
     expect(find.text('メモ'), findsOneWidget);
     expect(find.text('まだメモがありません'), findsOneWidget);
+    expect(find.text('ここに書いたメモは、待たないと読めなくなります'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(find.text('メモを作る'));
     await tester.pumpAndSettle();
 
     expect(find.text('新規メモ'), findsOneWidget);
@@ -90,6 +88,8 @@ void main() {
     expect(find.text('秘密'), findsOneWidget);
     expect(find.text('ロック中'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
+    // 見出しの下に、何件あって何が起きているかを出す。
+    expect(find.text('1件'), findsOneWidget);
   });
 
   testWidgets('開くと待機画面になり、待機中も本文は出ない', (tester) async {
@@ -98,11 +98,8 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    expect(find.text('解錠するまで本文は読めません'), findsOneWidget);
 
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
-
+    // 開いた時点で待機が始まる。
     expect(find.text('待機中'), findsOneWidget);
     expect(find.text('あと1分0秒'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
@@ -120,35 +117,30 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
 
     expect(find.text('ここは読めないはず'), findsOneWidget);
-    expect(find.text('あと5分0秒読めます'), findsOneWidget);
+    expect(find.text('この画面を開いている間だけ読めます'), findsOneWidget);
   });
 
-  testWidgets('閲覧可能時間が過ぎると再びロックされる', (tester) async {
+  testWidgets('解錠しても、画面を離れれば閉じる', (tester) async {
     await pumpApp(tester);
     await createMemo(tester, title: '秘密', body: 'ここは読めないはず');
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
-
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
     expect(find.text('ここは読めないはず'), findsOneWidget);
 
-    // 解錠してから5分。読める時間は待機と違って現実の時間で過ぎる。
-    clock.advance(const Duration(minutes: 6));
-    await tick(tester);
+    // 一覧に戻ると、その場でロック中に戻る。
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
 
     expect(find.text('ここは読めないはず'), findsNothing);
-    expect(find.text('開く'), findsOneWidget);
+    expect(find.text('ロック中'), findsOneWidget);
   });
 
   testWidgets('待つのをやめると最初から待ち直しになる', (tester) async {
@@ -157,15 +149,11 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
 
     await tester.tap(find.text('待つのをやめる'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
 
     expect(find.text('開く'), findsOneWidget);
@@ -208,8 +196,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(generated), findsNothing);
 
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
 
@@ -238,8 +224,6 @@ void main() {
 
     expect(find.text('3回開いた'), findsOneWidget);
 
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
     clock.advance(const Duration(minutes: 1));
     await tick(tester);
 
@@ -255,34 +239,30 @@ void main() {
     expect(find.text('4回開いた'), findsOneWidget);
   });
 
-  testWidgets('待機画面を離れている間は待機が進まない', (tester) async {
+  testWidgets('待機画面を離れると、待機は最初からやり直しになる', (tester) async {
     await pumpApp(tester);
     await createMemo(tester, title: '秘密', body: 'ここは読めないはず');
 
     await tester.tap(find.text('秘密'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
     await tester.pumpAndSettle();
 
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
     expect(find.text('あと30秒'), findsOneWidget);
 
-    // 一覧に戻ると計測は止まる。
+    // 一覧に戻ると待機そのものが消える。
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
-    clock.advance(const Duration(hours: 1));
-    await tick(tester);
+    expect(find.text('ロック中'), findsOneWidget);
 
-    expect(find.text('あと30秒・停止中'), findsOneWidget);
-
-    // 戻ってくると続きから。残り30秒ぶん見ていれば解錠される。
+    // 開き直しても、待った30秒は戻らない。
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
 
-    expect(find.text('ここは読めないはず'), findsOneWidget);
+    expect(find.text('あと30秒'), findsOneWidget);
+    expect(find.text('ここは読めないはず'), findsNothing);
   });
 
   testWidgets('開封の記録がグラフで出る', (tester) async {
@@ -368,8 +348,6 @@ void main() {
 
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     // 待たずに問いへ進む。本文はまだ出ない。
     expect(find.text('1 / 2'), findsOneWidget);
@@ -385,8 +363,8 @@ void main() {
     await tester.tap(find.text('はい'));
     await tester.pumpAndSettle();
 
+    // 待機時間が無いので、答え終えた時点で読める。
     expect(find.text('ここは読めないはず'), findsOneWidget);
-    expect(find.text('1回開いた'), findsOneWidget);
   });
 
   testWidgets('「いいえ」を選ぶと開かず、ロック中に戻る', (tester) async {
@@ -404,8 +382,6 @@ void main() {
     await pumpApp(tester);
     await tester.tap(find.text('秘密'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('開く'));
-    await tester.pumpAndSettle();
 
     expect(find.text('後悔しませんか'), findsOneWidget);
 
@@ -417,5 +393,43 @@ void main() {
     expect(find.text('ロック中'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
     expect(repository.memos.single.declineCount, 1);
+  });
+
+  testWidgets('解錠中なら、編集から待機時間も解錠のしかたも変えられる', (tester) async {
+    repository = InMemoryMemoRepository([
+      Memo(
+        id: 'open',
+        title: '開いているメモ',
+        body: '中身',
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 1)),
+      ),
+    ]);
+
+    await pumpApp(tester);
+    await tester.tap(find.text('開いているメモ'));
+    await tester.pumpAndSettle();
+
+    // 解錠するまで編集できない。
+    clock.advance(const Duration(minutes: 1));
+    await tick(tester);
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    // 今の設定が初期値として入っている。
+    expect(find.text('メモを編集'), findsOneWidget);
+    expect(find.text('待機時間'), findsOneWidget);
+
+    await tester.tap(find.text('10分'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(
+      repository.memos.single.unlockRule.expectedWait,
+      const Duration(minutes: 10),
+    );
   });
 }

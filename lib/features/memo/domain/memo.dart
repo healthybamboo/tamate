@@ -2,7 +2,6 @@ import 'package:meta/meta.dart';
 
 import 'memo_lock_state.dart';
 import 'memo_wait.dart';
-import 'unlock_policy.dart';
 import 'unlock_rule.dart';
 
 /// メモ1件を表すドメインモデル。
@@ -20,6 +19,7 @@ class Memo {
     required this.updatedAt,
     this.unlockRule = UnlockRule.fallback,
     this.wait,
+    this.answeredAt,
     this.unlockedAt,
     this.openedAt = const [],
     this.declinedAt = const [],
@@ -43,6 +43,7 @@ class Memo {
           ? UnlockRule.fromJson(rule)
           : UnlockRule.fallback,
       wait: wait is Map<String, dynamic> ? MemoWait.fromJson(wait) : null,
+      answeredAt: _parseDate(json['answeredAt']),
       unlockedAt: _parseDate(unlockedAt),
       openedAt: _parseDates(json['openedAt']),
       declinedAt: _parseDates(json['declinedAt']),
@@ -58,9 +59,9 @@ class Memo {
   /// このメモの解錠条件。
   final UnlockRule unlockRule;
 
-  /// 待機の経過。null なら待機を始めていない。
+  /// 待機。null なら待機を始めていない。
   ///
-  /// 進むのは待機画面を見ている間だけ。詳細は `docs/spec.md` を参照。
+  /// 続くのは待機画面を見ている間だけで、離れれば捨てる。詳細は `docs/spec.md` を参照。
   final MemoWait? wait;
 
   /// 本文が読める状態になった時刻の履歴。古い順。
@@ -78,35 +79,22 @@ class Memo {
   /// これまでに引き返した回数。
   int get declineCount => declinedAt.length;
 
-  /// 解錠を検知した時刻。閲覧可能時間の起点。
+  /// 問いに答え終えた時刻。null なら、まだ答えていない。
+  ///
+  /// 問いは待ち始める前に答えるので、ここが埋まってから待機の計測が始まる。
+  final DateTime? answeredAt;
+
+  /// 解錠を検知した時刻。
   ///
   /// 解錠時刻が事前に分かるルールでは [UnlockRule.unlockAt] から導出できるため、
   /// 実際に使うのは解錠時刻を計算できないルールの場合。
   final DateTime? unlockedAt;
 
-  /// 待機が今のまま進んだ場合に解錠される時刻。
-  ///
-  /// 待機が止まっている、または時間で測れないルールなら null。通知の予約に使う。
-  DateTime? scheduledUnlockAt(DateTime now) {
-    final current = wait;
-    if (current == null || !current.isRunning) {
-      return null;
-    }
-    final progress = unlockRule.progressFor(current.elapsedAt(now));
-    return switch (progress) {
-      UnlockPending(:final remaining) =>
-        remaining == null ? null : now.add(remaining),
-      // 問いに答えるのは待機のあと。知らせる時刻としては待機が明けた今でよい。
-      UnlockNeedsAnswers() || UnlockSatisfied() => now,
-    };
-  }
-
   /// [now] 時点での解錠状態。
   MemoLockState lockStateAt(DateTime now) {
-    final openedAt = unlockedAt;
-    if (openedAt != null) {
-      // 解錠が成立している。あとは閲覧可能時間が残っているかどうか。
-      return _readableStateAt(openedAt: openedAt, now: now);
+    if (unlockedAt != null) {
+      // 解錠が成立している。画面を離れるまでは読める。
+      return const MemoUnlocked();
     }
 
     final current = wait;
@@ -114,28 +102,18 @@ class Memo {
       return const MemoLocked();
     }
 
-    switch (unlockRule.progressFor(current.elapsedAt(now))) {
+    switch (unlockRule.progressFor(
+      elapsed: current.elapsedAt(now),
+      answered: answeredAt != null,
+    )) {
       case UnlockPending(:final remaining):
-        return MemoWaiting(remaining: remaining, running: current.isRunning);
+        return MemoWaiting(remaining: remaining);
       case UnlockNeedsAnswers(:final questions):
         return MemoAwaitingAnswers(questions: questions);
       case UnlockSatisfied():
         // 待機が終わった瞬間は画面を見ているはずなので、そのまま解錠にする。
-        return _readableStateAt(openedAt: unlockedAt ?? now, now: now);
+        return const MemoUnlocked();
     }
-  }
-
-  /// [openedAt] に解錠したメモの、[now] 時点の状態。
-  MemoLockState _readableStateAt({
-    required DateTime openedAt,
-    required DateTime now,
-  }) {
-    final relocksAt = openedAt.add(UnlockPolicy.openWindow);
-    final remaining = relocksAt.difference(now);
-    if (remaining <= Duration.zero) {
-      return const MemoLocked();
-    }
-    return MemoUnlocked(remaining: remaining, relocksAt: relocksAt);
   }
 
   /// [now] から待機を始めた状態。前回の解錠の記録は捨てる。
@@ -146,30 +124,14 @@ class Memo {
         createdAt: createdAt,
         updatedAt: updatedAt,
         unlockRule: unlockRule,
-        wait: MemoWait.startedAt(now),
+        wait: MemoWait(now),
         openedAt: openedAt,
         declinedAt: declinedAt,
       );
 
-  /// 待機の計測を再開した状態。待機画面に戻ってきたときに使う。
-  Memo resumeWaiting(DateTime now) {
-    final current = wait;
-    return current == null ? this : _withWait(current.resume(now));
-  }
-
-  /// 待機の計測を止めた状態。ここまでの経過は残る。
-  Memo pauseWaiting(DateTime now) {
-    final current = wait;
-    return current == null ? this : _withWait(current.pause(now));
-  }
-
-  /// 進行中だったぶんを捨てて止めた状態。アプリが落とされた場合に使う。
-  Memo dropRunningWait() {
-    final current = wait;
-    return current == null ? this : _withWait(current.dropRunning());
-  }
-
-  /// 待機をやめてロック中に戻した状態。経過も解錠の記録も捨てる。
+  /// 閉じてロック中に戻した状態。待機の経過も解錠の記録も捨てる。
+  ///
+  /// 詳細画面を離れたときに使う。待機中なら待ち直し、解錠中ならその場で閉じる。
   Memo cancelWaiting() => Memo(
         id: id,
         title: title,
@@ -177,6 +139,21 @@ class Memo {
         createdAt: createdAt,
         updatedAt: updatedAt,
         unlockRule: unlockRule,
+        openedAt: openedAt,
+        declinedAt: declinedAt,
+      );
+
+  /// 問いに答え終えた状態。ここから待機の計測が始まる。
+  Memo markAnswered(DateTime at) => Memo(
+        id: id,
+        title: title,
+        body: body,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        unlockRule: unlockRule,
+        // 待つのは答えたあと。答えるのにかけた時間は待機に数えない。
+        wait: MemoWait(at),
+        answeredAt: at,
         openedAt: openedAt,
         declinedAt: declinedAt,
       );
@@ -195,15 +172,16 @@ class Memo {
         declinedAt: [...declinedAt, at],
       );
 
-  /// 問いを差し替えた状態。問いは解錠中なら育てていける。
-  Memo withQuestions(List<String> questions) => Memo(
+  /// 解錠のしかたを差し替えた状態。解錠中のメモだけが対象。
+  Memo withUnlockRule(UnlockRule rule) => Memo(
         id: id,
         title: title,
         body: body,
         createdAt: createdAt,
         updatedAt: updatedAt,
-        unlockRule: unlockRule.withQuestions(questions),
+        unlockRule: rule,
         wait: wait,
+        answeredAt: answeredAt,
         unlockedAt: unlockedAt,
         openedAt: openedAt,
         declinedAt: declinedAt,
@@ -224,21 +202,7 @@ class Memo {
         declinedAt: declinedAt,
       );
 
-  Memo _withWait(MemoWait wait) => Memo(
-        id: id,
-        title: title,
-        body: body,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
-        unlockRule: unlockRule,
-        wait: wait,
-        unlockedAt: unlockedAt,
-        openedAt: openedAt,
-      );
-
   /// 待機時間を [duration] に差し替えた状態。
-  ///
-  /// 作成後に待機時間を変えられるのは、開封回数に応じた提案から伸ばすときだけ。
   Memo withWaitDuration(Duration duration) => Memo(
         id: id,
         title: title,
@@ -266,6 +230,7 @@ class Memo {
         updatedAt: updatedAt ?? this.updatedAt,
         unlockRule: unlockRule,
         wait: wait,
+        answeredAt: answeredAt,
         unlockedAt: unlockedAt,
         openedAt: openedAt,
         declinedAt: declinedAt,
@@ -279,6 +244,7 @@ class Memo {
         'updatedAt': updatedAt.toUtc().toIso8601String(),
         'unlockRule': unlockRule.toJson(),
         'wait': wait?.toJson(),
+        'answeredAt': answeredAt?.toUtc().toIso8601String(),
         'unlockedAt': unlockedAt?.toUtc().toIso8601String(),
         'openedAt': [
           for (final at in openedAt) at.toUtc().toIso8601String(),
@@ -318,6 +284,7 @@ class Memo {
           other.updatedAt == updatedAt &&
           other.unlockRule == unlockRule &&
           other.wait == wait &&
+          other.answeredAt == answeredAt &&
           other.unlockedAt == unlockedAt &&
           _sameDates(other.openedAt, openedAt) &&
           _sameDates(other.declinedAt, declinedAt);
@@ -343,6 +310,7 @@ class Memo {
         updatedAt,
         unlockRule,
         wait,
+        answeredAt,
         unlockedAt,
         Object.hashAll(openedAt),
         Object.hashAll(declinedAt),

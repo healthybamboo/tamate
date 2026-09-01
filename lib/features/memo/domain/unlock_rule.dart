@@ -59,8 +59,13 @@ abstract class UnlockRule {
   /// 保存時の識別子。
   String get type;
 
-  /// 待機画面を見ていた時間が [elapsed] のとき、解錠条件を満たしているか。
-  UnlockProgress progressFor(Duration elapsed);
+  /// 解錠条件を満たしているか。
+  ///
+  /// [elapsed] は待機画面を見ていた時間、[answered] は問いに答え終えたか。
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  });
 
   /// 解錠までにかかる時間。時間で測れないルールでは null を返す。
   ///
@@ -75,11 +80,6 @@ abstract class UnlockRule {
   /// 待機時間を持たないルールは自分をそのまま返す。開封回数に応じて
   /// 待機時間を伸ばす提案から使う。
   UnlockRule withWaitDuration(Duration duration) => this;
-
-  /// 問いを [questions] に差し替えたルール。
-  ///
-  /// 問いを持たないルールは自分をそのまま返す。
-  UnlockRule withQuestions(List<String> questions) => this;
 
   Map<String, dynamic> toJson();
 }
@@ -105,7 +105,10 @@ final class WaitDurationUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressFor(Duration elapsed) {
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  }) {
     final remaining = duration - elapsed;
     if (remaining <= Duration.zero) {
       return const UnlockSatisfied();
@@ -166,15 +169,16 @@ final class QuestionUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressFor(Duration elapsed) =>
-      UnlockNeedsAnswers(questions: questions);
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  }) =>
+      answered
+          ? const UnlockSatisfied()
+          : UnlockNeedsAnswers(questions: questions);
 
   @override
   Duration? get expectedWait => null;
-
-  @override
-  UnlockRule withQuestions(List<String> questions) =>
-      QuestionUnlockRule(questions);
 
   @override
   Map<String, dynamic> toJson() => {'type': typeName, 'questions': questions};
@@ -218,9 +222,12 @@ final class AllOfUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressFor(Duration elapsed) {
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  }) {
     for (final rule in rules) {
-      final progress = rule.progressFor(elapsed);
+      final progress = rule.progressFor(elapsed: elapsed, answered: answered);
       if (progress is! UnlockSatisfied) {
         return progress;
       }
@@ -248,11 +255,6 @@ final class AllOfUnlockRule extends UnlockRule {
   @override
   UnlockRule withWaitDuration(Duration duration) => AllOfUnlockRule([
         for (final rule in rules) rule.withWaitDuration(duration),
-      ]);
-
-  @override
-  UnlockRule withQuestions(List<String> questions) => AllOfUnlockRule([
-        for (final rule in rules) rule.withQuestions(questions),
       ]);
 
   @override

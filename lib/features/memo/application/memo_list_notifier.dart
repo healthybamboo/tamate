@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/clock/clock.dart';
-import '../../../core/notifications/notification_service.dart';
 import '../data/memo_repository.dart';
 import '../domain/memo.dart';
 import '../domain/memo_lock_state.dart';
@@ -15,29 +14,18 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
 
   MemoRepository get _repository => ref.read(memoRepositoryProvider);
 
-  NotificationService get _notifications =>
-      ref.read(notificationServiceProvider);
-
   DateTime get _now => ref.read(clockProvider).now();
 
   @override
   Future<List<Memo>> build() async {
     final memos = await _repository.fetchAll();
-    // 前回アプリが落ちたときに進行中だった待機は、そのぶんを捨てて止める。
-    // 落ちている間は待っていないので、経過に入れてはいけない。
-    return _sorted([for (final memo in memos) memo.dropRunningWait()]);
+    // 前回の待機も解錠も捨てる。アプリを閉じた時点で閉じたのと同じ。
+    return _sorted([for (final memo in memos) memo.cancelWaiting()]);
   }
 
-  /// 保存内容を読み直す。
-  ///
-  /// アプリ復帰時に呼ぶ。閲覧可能時間が過ぎたメモの待機状態はここで片付ける。
+  /// 保存内容を読み直す。アプリ復帰時に呼ぶ。
   Future<void> refresh() async {
-    final stored = await _repository.fetchAll();
-    final cleaned = _withRelockedCleared(stored, _now);
-    state = AsyncData(_sorted(cleaned));
-    if (!_sameMemos(stored, cleaned)) {
-      await _repository.saveAll(cleaned);
-    }
+    state = AsyncData(_sorted(await _repository.fetchAll()));
   }
 
   Future<void> add({
@@ -57,114 +45,63 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     await _mutate((memos) => [...memos, memo]);
   }
 
-  /// 本文を書き換える。解錠中でなければ何もせず false を返す。
+  /// 内容と解錠のしかたを書き換える。解錠中でなければ何もせず false を返す。
+  ///
+  /// 待機時間も問いも、解錠中なら変えられる。一度開くところまでは同じコストを
+  /// 払っているので、そこから先は育てていけるようにしておく。
   Future<bool> edit({
     required String id,
     required String title,
     required String body,
+    UnlockRule? unlockRule,
   }) async {
+    final now = _now;
     final memo = _find(id);
-    if (memo == null || !memo.lockStateAt(_now).canRead) {
+    if (memo == null || !memo.lockStateAt(now).canRead) {
       return false;
     }
 
     await _mutate(
-      (memos) => memos
-          .map(
-            (e) => e.id == id
-                ? e.copyWith(title: title, body: body, updatedAt: _now)
-                : e,
-          )
-          .toList(),
+      (memos) => memos.map((e) {
+        if (e.id != id) {
+          return e;
+        }
+        final edited = e.copyWith(title: title, body: body, updatedAt: now);
+        return unlockRule == null ? edited : edited.withUnlockRule(unlockRule);
+      }).toList(),
     );
     return true;
   }
 
   Future<void> delete(String id) async {
-    await _notifications.cancelUnlock(id);
     await _mutate((memos) => memos.where((memo) => memo.id != id).toList());
   }
 
-  /// 待機を始める。解錠予定時刻が分かるなら通知も予約する。
-  Future<void> startWaiting(
-    String id, {
-    required UnlockNotificationContent notification,
-  }) async {
+  /// 待機を始める。
+  Future<void> startWaiting(String id) async {
     final now = _now;
     await _mutate(
       (memos) =>
           memos.map((e) => e.id == id ? e.startWaiting(now) : e).toList(),
     );
-
-    // 待つメモだけが通知の対象。問いに答えるだけのメモで許可を求めても意味がない。
-    if (_find(id)?.unlockRule.expectedWait != null) {
-      await _notifications.requestPermission();
-      await _scheduleUnlock(id, notification);
-    }
   }
 
-  /// 待機の計測を再開する。待機画面に戻ってきたときに呼ぶ。
-  Future<void> resumeWaiting(
-    String id, {
-    required UnlockNotificationContent notification,
-  }) async {
-    final now = _now;
-    final memo = _find(id);
-    if (memo?.wait == null || (memo!.wait!.isRunning)) {
-      return;
-    }
-
-    await _mutate(
-      (memos) =>
-          memos.map((e) => e.id == id ? e.resumeWaiting(now) : e).toList(),
-    );
-    await _scheduleUnlock(id, notification);
-  }
-
-  /// 待機の計測を止める。待機画面を離れたときに呼ぶ。
+  /// メモを閉じてロック中に戻す。待機の経過も解錠も捨てる。
   ///
-  /// 経過は残るので、戻ってくれば続きから進む。画面が捨てられる途中でも呼ばれるので、
+  /// 詳細画面を離れたときに呼ぶ。画面が捨てられる途中でも呼ばれるので、
   /// Provider から引くものは最初の await より前に済ませておく。
-  Future<void> pauseWaiting(String id) async {
-    final now = _now;
+  Future<void> close(String id) async {
     final memo = _find(id);
-    if (memo?.wait?.isRunning != true) {
+    if (memo == null || (memo.wait == null && memo.unlockedAt == null)) {
       return;
     }
-    final notifications = _notifications;
 
-    await _mutate(
-      (memos) =>
-          memos.map((e) => e.id == id ? e.pauseWaiting(now) : e).toList(),
-    );
-    await notifications.cancelUnlock(id);
-  }
-
-  /// 進んでいる待機の解錠予定時刻に通知を予約する。
-  Future<void> _scheduleUnlock(
-    String id,
-    UnlockNotificationContent notification,
-  ) async {
-    final unlockAt = _find(id)?.scheduledUnlockAt(_now);
-    if (unlockAt == null) {
-      return;
-    }
-    await _notifications.scheduleUnlock(
-      memoId: id,
-      unlockAt: unlockAt,
-      content: notification,
-    );
-  }
-
-  /// 待機をやめてロック中に戻す。計測はリセットされる。
-  Future<void> cancelWaiting(String id) async {
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.cancelWaiting() : e).toList(),
     );
   }
 
-  /// 問いにすべて「はい」で答えたときに呼ぶ。解錠して記録を残す。
+  /// 問いにすべて「はい」で答えたときに呼ぶ。ここから待機が始まる。
   Future<void> acceptAnswers(String id) async {
     final now = _now;
     final memo = _find(id);
@@ -172,10 +109,9 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       return;
     }
 
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) =>
-          memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
+          memos.map((e) => e.id == id ? e.markAnswered(now) : e).toList(),
     );
   }
 
@@ -189,25 +125,9 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       return;
     }
 
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.decline(now) : e).toList(),
     );
-  }
-
-  /// 問いを差し替える。解錠中のメモだけが対象。
-  Future<bool> editQuestions(String id, List<String> questions) async {
-    final memo = _find(id);
-    if (memo == null || !memo.lockStateAt(_now).canRead) {
-      return false;
-    }
-
-    await _mutate(
-      (memos) => memos
-          .map((e) => e.id == id ? e.withQuestions(questions) : e)
-          .toList(),
-    );
-    return true;
   }
 
   /// 待機時間を1段階のばす。いちばん長いものなら何もせず null を返す。
@@ -242,7 +162,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       return;
     }
 
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) =>
           memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
@@ -267,30 +186,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     final next = _sorted(transform(current));
     state = AsyncData(next);
     await repository.saveAll(next);
-  }
-
-  /// 再ロックされたメモの待機状態を落とす。
-  ///
-  /// 状態は時刻から導出しているので消さなくても表示は正しいが、
-  /// 意味を失った待機開始時刻を残しておく理由もないので片付ける。
-  List<Memo> _withRelockedCleared(List<Memo> memos, DateTime now) => memos
-      .map((memo) => _isRelocked(memo, now) ? memo.cancelWaiting() : memo)
-      .toList();
-
-  /// 解錠されたあと、閲覧可能時間まで過ぎたか。待機中は false。
-  bool _isRelocked(Memo memo, DateTime now) =>
-      memo.unlockedAt != null && !memo.lockStateAt(now).canRead;
-
-  bool _sameMemos(List<Memo> a, List<Memo> b) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /// 更新日時の新しい順。

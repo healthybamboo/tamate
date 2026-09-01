@@ -17,7 +17,6 @@
   "actionStopWaiting": "待つのをやめる",
   "actionClose": "閉じる",
   "deleteConfirmMessage": "このメモを削除しますか？",
-  "stopWaitingConfirmMessage": "待つのをやめると、次に開くときは最初から待ち直しになります。やめますか？",
   "errorGeneric": "エラーが発生しました",
   "memoNotFound": "メモが見つかりません",
   "stateLocked": "ロック中",
@@ -48,30 +47,10 @@
       }
     }
   },
-  "unlockedRemaining": "あと{remaining}読めます",
-  "@unlockedRemaining": {
-    "placeholders": {
-      "remaining": {
-        "type": "String"
-      }
-    }
-  },
-  "unlockedRelockNotice": "閉じたあとに読み直すには、また待つことになります",
   "memoWaitDurationLabel": "待機時間",
-  "memoWaitDurationHelper": "作成後は変更できません",
+  "memoWaitDurationHelper": "解錠中なら後から変えられます",
   "memoBodyLockedLabel": "解錠中のみ編集できます",
   "editRejectedRelocked": "再ロックされたため保存できませんでした",
-  "notificationChannelName": "解錠のお知らせ",
-  "notificationChannelDescription": "メモが読めるようになったことを知らせます",
-  "notificationUnlockedTitle": "メモが開けるようになりました",
-  "notificationUnlockedBody": "「{title}」を読めます",
-  "@notificationUnlockedBody": {
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
   "durationDayHour": "{days}日{hours}時間",
   "@durationDayHour": {
     "placeholders": {
@@ -171,16 +150,7 @@
   },
   "generateCodeAction": "4桁のコードを生成",
   "generateCodeNotice": "先に設定したいところへ入力してください。保存すると、読み直すには待つことになります",
-  "waitingPauseNotice": "この画面を離れると待機は止まります",
-  "waitingPaused": "停止中",
-  "waitingRemainingPaused": "あと{remaining}・停止中",
-  "@waitingRemainingPaused": {
-    "placeholders": {
-      "remaining": {
-        "type": "String"
-      }
-    }
-  },
+  "waitingPauseNotice": "この画面を離れると、待機は最初からやり直しになります",
   "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録",
   "stateAwaitingAnswers": "問いに答える",
   "questionProgress": "{current} / {total}",
@@ -216,5 +186,50 @@
   "questionsRequired": "問いを1つ以上書いてください",
   "questionSuggestion1": "今これを開いて、死ぬときに後悔しませんか",
   "questionSuggestion2": "一年後の自分に、後悔はないですか",
-  "questionSuggestion3": "目を瞑って、本当にそうか確かめましたか"
+  "questionSuggestion3": "目を瞑って、本当にそうか確かめましたか",
+  "memoListEmptyDescription": "ここに書いたメモは、待たないと読めなくなります",
+  "actionCreateMemo": "メモを作る",
+  "lockedWaitSummary": "{duration}待つ",
+  "@lockedWaitSummary": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "lockedQuestionSummary": "問いに答える",
+  "lockedWaitAndQuestionSummary": "{duration}待って、問いに答える",
+  "@lockedWaitAndQuestionSummary": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "memoListSummaryTotal": "{count}件",
+  "@memoListSummaryTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "memoListSummaryReadable": "{count}件が読める",
+  "@memoListSummaryReadable": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "memoListSummaryWaiting": "{count}件が待機中",
+  "@memoListSummaryWaiting": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "summarySeparator": "・",
+  "unlockedNotice": "この画面を開いている間だけ読めます"
 }

@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 import 'package:tamate/features/memo/domain/memo_lock_state.dart';
 import 'package:tamate/features/memo/domain/memo_wait.dart';
-import 'package:tamate/features/memo/domain/unlock_policy.dart';
 import 'package:tamate/features/memo/domain/unlock_rule.dart';
 
 void main() {
@@ -26,95 +25,47 @@ void main() {
     });
 
     test('待機中は残り時間を返す', () {
-      final state = memo(wait: MemoWait.startedAt(createdAt))
+      final state = memo(wait: MemoWait(createdAt))
           .lockStateAt(createdAt.add(const Duration(minutes: 3)));
 
       expect(
         state,
-        const MemoWaiting(remaining: Duration(minutes: 7), running: true),
+        const MemoWaiting(remaining: Duration(minutes: 7)),
       );
       expect(state.canRead, isFalse);
     });
 
     test('待機時間ぶん見ていたら解錠中になる', () {
-      final state = memo(wait: MemoWait.startedAt(createdAt))
+      final state = memo(wait: MemoWait(createdAt))
           .lockStateAt(createdAt.add(const Duration(minutes: 11)));
 
-      expect(state.canRead, isTrue);
+      expect(state, const MemoUnlocked());
     });
 
-    test('閲覧可能時間を過ぎたら再びロック中になる', () {
+    test('解錠したあとは、時間が経っても読めるまま', () {
+      // 閉じるまでは読める。閉じたときに cancelWaiting で落とす。
       final unlockedAt = createdAt.add(const Duration(minutes: 10));
 
       expect(
         memo(unlockedAt: unlockedAt)
-            .lockStateAt(unlockedAt.add(UnlockPolicy.openWindow)),
-        const MemoLocked(),
+            .lockStateAt(unlockedAt.add(const Duration(hours: 3))),
+        const MemoUnlocked(),
       );
     });
 
-    test('解錠を記録した時刻から閲覧可能時間を数える', () {
-      final unlockedAt = createdAt.add(const Duration(minutes: 30));
-      final state = memo(unlockedAt: unlockedAt)
-          .lockStateAt(unlockedAt.add(const Duration(minutes: 1)));
+    test('閉じるとロック中に戻る', () {
+      final closed =
+          memo(unlockedAt: createdAt.add(const Duration(minutes: 10)))
+              .cancelWaiting();
 
-      expect(
-        (state as MemoUnlocked).relocksAt,
-        unlockedAt.add(UnlockPolicy.openWindow),
-      );
+      expect(closed.unlockedAt, isNull);
+      expect(closed.lockStateAt(createdAt), const MemoLocked());
     });
   });
 
-  group('待機の経過', () {
-    test('止めている間は残り時間が減らない', () {
-      final paused = memo(wait: MemoWait.startedAt(createdAt))
-          .pauseWaiting(createdAt.add(const Duration(minutes: 2)));
-
-      // 止めてから1時間経っても、経過は止めた時点のまま。
-      final state = paused.lockStateAt(createdAt.add(const Duration(hours: 1)));
-
-      expect(
-        state,
-        const MemoWaiting(remaining: Duration(minutes: 8), running: false),
-      );
-    });
-
-    test('再開すると続きから減る', () {
-      final pausedAt = createdAt.add(const Duration(minutes: 2));
-      final resumedAt = createdAt.add(const Duration(hours: 1));
-      final resumed = memo(wait: MemoWait.startedAt(createdAt))
-          .pauseWaiting(pausedAt)
-          .resumeWaiting(resumedAt);
-
-      final state =
-          resumed.lockStateAt(resumedAt.add(const Duration(minutes: 3)));
-
-      expect(
-        state,
-        const MemoWaiting(remaining: Duration(minutes: 5), running: true),
-      );
-    });
-
-    test('アプリが落ちた場合、進行中だったぶんは経過に入らない', () {
-      final dropped = memo(wait: MemoWait.startedAt(createdAt))
-          .pauseWaiting(createdAt.add(const Duration(minutes: 2)))
-          .resumeWaiting(createdAt.add(const Duration(minutes: 3)))
-          .dropRunningWait();
-
-      // 残るのは止めるまでに見ていた2分だけ。
-      final state =
-          dropped.lockStateAt(createdAt.add(const Duration(hours: 1)));
-
-      expect(
-        state,
-        const MemoWaiting(remaining: Duration(minutes: 8), running: false),
-      );
-    });
-
+  group('待機', () {
     test('cancelWaiting で経過ごと捨てる', () {
-      final canceled = memo(wait: MemoWait.startedAt(createdAt))
-          .pauseWaiting(createdAt.add(const Duration(minutes: 9)))
-          .cancelWaiting();
+      final canceled = memo(wait: MemoWait(createdAt)).cancelWaiting();
 
       expect(canceled.wait, isNull);
       expect(canceled.lockStateAt(createdAt), const MemoLocked());
@@ -123,12 +74,12 @@ void main() {
     test('startWaiting は前回の解錠の記録を捨てる', () {
       final started = memo(unlockedAt: createdAt).startWaiting(createdAt);
 
-      expect(started.wait?.isRunning, isTrue);
+      expect(started.wait, MemoWait(createdAt));
       expect(started.unlockedAt, isNull);
     });
 
-    test('copyWith は待機の経過を引き継ぐ', () {
-      final wait = MemoWait.startedAt(createdAt);
+    test('copyWith は待機を引き継ぐ', () {
+      final wait = MemoWait(createdAt);
       final edited = memo(wait: wait).copyWith(body: '書き換え');
 
       expect(edited.body, '書き換え');
@@ -136,29 +87,9 @@ void main() {
     });
   });
 
-  group('解錠予定時刻', () {
-    test('進んでいる待機は残り時間から求まる', () {
-      final now = createdAt.add(const Duration(minutes: 4));
-      final memoAt = memo(wait: MemoWait.startedAt(createdAt));
-
-      expect(
-        memoAt.scheduledUnlockAt(now),
-        now.add(const Duration(minutes: 6)),
-      );
-    });
-
-    test('止まっている待機では分からない', () {
-      final paused = memo(wait: MemoWait.startedAt(createdAt))
-          .pauseWaiting(createdAt.add(const Duration(minutes: 4)));
-
-      expect(paused.scheduledUnlockAt(createdAt), isNull);
-    });
-  });
-
   group('JSON', () {
     test('往復しても内容が変わらない', () {
-      final original = memo(wait: MemoWait.startedAt(createdAt))
-          .pauseWaiting(createdAt.add(const Duration(minutes: 2)));
+      final original = memo(wait: MemoWait(createdAt));
 
       expect(Memo.fromJson(original.toJson()), original);
     });
@@ -213,7 +144,7 @@ void main() {
       final first = createdAt.add(const Duration(minutes: 10));
       final second = createdAt.add(const Duration(hours: 1));
 
-      final opened = memo(wait: MemoWait.startedAt(createdAt))
+      final opened = memo(wait: MemoWait(createdAt))
           .markUnlocked(first)
           .startWaiting(second)
           .markUnlocked(second);
@@ -224,7 +155,7 @@ void main() {
 
     test('解錠すると待機の経過は役目を終える', () {
       final at = createdAt.add(const Duration(minutes: 10));
-      final opened = memo(wait: MemoWait.startedAt(createdAt)).markUnlocked(at);
+      final opened = memo(wait: MemoWait(createdAt)).markUnlocked(at);
 
       expect(opened.wait, isNull);
       expect(opened.lockStateAt(at).canRead, isTrue);
@@ -240,7 +171,7 @@ void main() {
 
     test('JSON を往復しても履歴が残る', () {
       final at = createdAt.add(const Duration(minutes: 10));
-      final opened = memo(wait: MemoWait.startedAt(createdAt)).markUnlocked(at);
+      final opened = memo(wait: MemoWait(createdAt)).markUnlocked(at);
 
       expect(Memo.fromJson(opened.toJson()), opened);
     });
@@ -260,7 +191,7 @@ void main() {
 
   group('待機時間の差し替え', () {
     test('withWaitDuration で待機時間だけが変わる', () {
-      final wait = MemoWait.startedAt(createdAt);
+      final wait = MemoWait(createdAt);
       final extended =
           memo(wait: wait).withWaitDuration(const Duration(minutes: 10));
 
@@ -271,8 +202,8 @@ void main() {
 
   group('問いかけ', () {
     const questionRule = AllOfUnlockRule([
-      WaitDurationUnlockRule(Duration(minutes: 3)),
       QuestionUnlockRule(['後悔しませんか']),
+      WaitDurationUnlockRule(Duration(minutes: 3)),
     ]);
 
     Memo questionMemo({MemoWait? wait}) => Memo(
@@ -285,36 +216,49 @@ void main() {
           wait: wait,
         );
 
-    test('待機が明けても、問いに答えるまで読めない', () {
-      final state = questionMemo(wait: MemoWait.startedAt(createdAt))
+    test('開いた直後は、待つ前に問いへ答える', () {
+      final state = questionMemo(wait: MemoWait(createdAt))
           .lockStateAt(createdAt.add(const Duration(minutes: 5)));
 
       expect(state, const MemoAwaitingAnswers(questions: ['後悔しませんか']));
       expect(state.canRead, isFalse);
     });
 
-    test('いいえで引き返すと、待機の経過ごと捨てる', () {
+    test('答え終えたところから待機が始まる', () {
+      final answeredAt = createdAt.add(const Duration(minutes: 5));
+      final answered =
+          questionMemo(wait: MemoWait(createdAt)).markAnswered(answeredAt);
+
+      // 答えるのにかけた5分は待機に数えない。
+      expect(
+        answered.lockStateAt(answeredAt.add(const Duration(minutes: 1))),
+        const MemoWaiting(remaining: Duration(minutes: 2)),
+      );
+    });
+
+    test('いいえで引き返すと、待機の経過も答えも捨てる', () {
       final at = createdAt.add(const Duration(minutes: 5));
-      final declined =
-          questionMemo(wait: MemoWait.startedAt(createdAt)).decline(at);
+      final declined = questionMemo(wait: MemoWait(createdAt)).decline(at);
 
       expect(declined.wait, isNull);
+      expect(declined.answeredAt, isNull);
       expect(declined.declinedAt, [at]);
       expect(declined.declineCount, 1);
       expect(declined.lockStateAt(at), const MemoLocked());
     });
 
-    test('問いは後から差し替えられる', () {
-      final edited = questionMemo().withQuestions(['育てた問い']);
+    test('解錠のしかたは後から差し替えられる', () {
+      final edited = questionMemo().withUnlockRule(
+        const QuestionUnlockRule(['育てた問い']),
+      );
 
       expect(edited.unlockRule.questions, ['育てた問い']);
-      expect(edited.unlockRule.expectedWait, const Duration(minutes: 3));
+      expect(edited.unlockRule.expectedWait, isNull);
     });
 
     test('JSON を往復しても引き返した記録が残る', () {
       final at = createdAt.add(const Duration(minutes: 5));
-      final declined =
-          questionMemo(wait: MemoWait.startedAt(createdAt)).decline(at);
+      final declined = questionMemo(wait: MemoWait(createdAt)).decline(at);
 
       expect(Memo.fromJson(declined.toJson()), declined);
     });

@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/clock/clock.dart';
 import '../../../core/router/app_router.dart';
-import '../../../core/notifications/notification_service.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
 import '../domain/memo.dart';
@@ -34,6 +33,12 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
   /// 解錠を記録済みか。待ち直したらまた記録する。
   bool _settled = false;
 
+  /// この画面に入ったときの待機を始めたか。
+  ///
+  /// 一覧から開いた時点で待機を始める。読みたくて開いたのだから、そこから
+  /// 数え始めてよい。再ロックされたあとに開き直すかどうかは本人に決めさせる。
+  bool _autoStarted = false;
+
   /// 提案を「あとで」で閉じたか。閉じるのはこの表示の間だけ。
   bool _suggestionDismissed = false;
 
@@ -41,9 +46,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
   bool _foreground = true;
 
   late final AppLifecycleListener _lifecycleListener;
-
-  /// 直近のビルドで組み立てた通知の文面。再開時の予約に使う。
-  UnlockNotificationContent? _notification;
 
   /// 画面が捨てられたあとにも待機を止めるので、ここで掴んでおく。
   late final MemoListNotifier _notifier;
@@ -59,9 +61,9 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
           return;
         }
         _foreground = foreground;
-        // 背面に回ったら待機は止める。戻ってきたらビルドで再開する。
+        // 背面に回ったら閉じる。ちょっと離れる、を作らないため。
         if (!foreground) {
-          unawaited(_notifier.pauseWaiting(widget.memoId));
+          unawaited(_notifier.close(widget.memoId));
         } else {
           setState(() {});
         }
@@ -71,14 +73,14 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
   @override
   void dispose() {
-    // 画面を離れたら待機は止まる。経過は残るので続きから待てる。
+    // 画面を離れたら待機は最初からやり直しになる。
     // 破棄はウィジェットツリーの更新中に起きるので、フレームのあとに回す。
     final notifier = _notifier;
     final memoId = widget.memoId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // アプリごと畳まれていれば保存先はもう無い。その場合も次の起動で
-      // 進行中だったぶんは捨てるので、ここで諦めて構わない。
-      unawaited(notifier.pauseWaiting(memoId).catchError((Object _) {}));
+      // 待機は捨てられるので、ここで諦めて構わない。
+      unawaited(notifier.close(memoId).catchError((Object _) {}));
     });
     _lifecycleListener.dispose();
     super.dispose();
@@ -101,12 +103,16 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     final now =
         memo.lockStateAt(clockNow) is MemoLocked ? clockNow : watchNow(ref);
     final lockState = memo.lockStateAt(now);
-    _notification = unlockNotificationContent(l10n, memo);
 
     if (lockState.canRead && memo.unlockedAt == null) {
       _settleUnlock();
-    } else if (lockState is MemoWaiting && !lockState.running && _foreground) {
-      _resumeWaiting();
+    } else if (lockState is MemoLocked && !_autoStarted && _foreground) {
+      _autoStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _foreground) {
+          unawaited(_open(memo));
+        }
+      });
     }
 
     return Scaffold(
@@ -143,9 +149,8 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
                     onAccepted: _acceptAnswers,
                     onDeclined: _declineAnswers,
                   ),
-                MemoUnlocked(:final remaining) => _UnlockedView(
+                MemoUnlocked() => _UnlockedView(
                     memo: memo,
-                    remaining: remaining,
                     showSuggestion: !_suggestionDismissed,
                     onExtendWait: _extendWait,
                     onReview: () =>
@@ -176,28 +181,10 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     });
   }
 
-  /// 待機の再開。画面を見ている間だけ進む。
-  void _resumeWaiting() {
-    final notification = _notification;
-    if (notification == null) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _foreground) {
-        unawaited(
-          _notifier.resumeWaiting(widget.memoId, notification: notification),
-        );
-      }
-    });
-  }
-
   Future<void> _open(Memo memo) async {
-    final l10n = AppLocalizations.of(context);
     _settled = false;
-    await _notifier.startWaiting(
-      memo.id,
-      notification: unlockNotificationContent(l10n, memo),
-    );
+    _autoStarted = true;
+    await _notifier.startWaiting(memo.id);
   }
 
   Future<void> _extendWait() async {
@@ -235,13 +222,9 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     context.go(AppRoutes.memoList);
   }
 
+  /// 待つのをやめる。画面を離れるのと同じで、経過は捨てる。
   Future<void> _stopWaiting() async {
-    final l10n = AppLocalizations.of(context);
-    final confirmed = await _confirm(l10n.stopWaitingConfirmMessage);
-    if (!confirmed) {
-      return;
-    }
-    await ref.read(memoListProvider.notifier).cancelWaiting(widget.memoId);
+    await _notifier.close(widget.memoId);
   }
 
   Future<void> _delete() async {
@@ -382,7 +365,6 @@ class _WaitingView extends StatelessWidget {
 class _UnlockedView extends StatelessWidget {
   const _UnlockedView({
     required this.memo,
-    required this.remaining,
     required this.showSuggestion,
     required this.onExtendWait,
     required this.onReview,
@@ -391,7 +373,6 @@ class _UnlockedView extends StatelessWidget {
   });
 
   final Memo memo;
-  final Duration remaining;
   final bool showSuggestion;
   final VoidCallback onExtendWait;
   final VoidCallback onReview;
@@ -420,7 +401,7 @@ class _UnlockedView extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
+                    l10n.unlockedNotice,
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: theme.colorScheme.onSecondaryContainer,
                     ),
@@ -445,11 +426,6 @@ class _UnlockedView extends StatelessWidget {
                     onDismiss: onDismissSuggestion,
                   ),
                 SelectableText(memo.body, style: theme.textTheme.bodyLarge),
-                const SizedBox(height: 24),
-                Text(
-                  l10n.unlockedRelockNotice,
-                  style: theme.textTheme.bodySmall,
-                ),
               ],
             ),
           ),

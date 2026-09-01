@@ -1,5 +1,4 @@
 import 'package:tamate/core/clock/clock.dart';
-import 'package:tamate/core/notifications/notification_service.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 
@@ -29,38 +28,4 @@ class InMemoryMemoRepository implements MemoRepository {
 
   @override
   Future<void> saveAll(List<Memo> memos) async => _memos = [...memos];
-}
-
-/// 予約・取り消しの呼び出しだけを記録する通知サービス。
-class RecordingNotificationService implements NotificationService {
-  final List<({String memoId, DateTime unlockAt})> scheduled = [];
-  final List<String> canceled = [];
-  int permissionRequests = 0;
-
-  @override
-  Future<void> initialize() async {}
-
-  @override
-  Future<bool> requestPermission() async {
-    permissionRequests++;
-    return true;
-  }
-
-  @override
-  Future<void> scheduleUnlock({
-    required String memoId,
-    required DateTime unlockAt,
-    required UnlockNotificationContent content,
-  }) async {
-    scheduled.add((memoId: memoId, unlockAt: unlockAt));
-  }
-
-  @override
-  Future<void> cancelUnlock(String memoId) async => canceled.add(memoId);
-
-  @override
-  Stream<String> get openRequests => const Stream<String>.empty();
-
-  @override
-  String? takeLaunchMemoId() => null;
 }

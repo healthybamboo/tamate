@@ -22,24 +22,19 @@ final class MemoLocked extends MemoLockState {
 
 /// 開こうとして待っている状態。
 ///
-/// [running] が false なら画面を離れていて、残り時間は減っていない。
+/// 待機画面を見ている間しか続かない。離れれば待機そのものが消える。
 final class MemoWaiting extends MemoLockState {
-  const MemoWaiting({required this.remaining, required this.running});
+  const MemoWaiting({required this.remaining});
 
   /// 解錠までの残り時間。時間で測れないルールでは null。
   final Duration? remaining;
 
-  /// 待機が進んでいるか。
-  final bool running;
-
   @override
   bool operator ==(Object other) =>
-      other is MemoWaiting &&
-      other.remaining == remaining &&
-      other.running == running;
+      other is MemoWaiting && other.remaining == remaining;
 
   @override
-  int get hashCode => Object.hash(remaining, running);
+  int get hashCode => remaining.hashCode;
 }
 
 /// 待機は終わったが、問いへの答えを待っている状態。
@@ -60,21 +55,14 @@ final class MemoAwaitingAnswers extends MemoLockState {
 }
 
 /// 解錠されて本文が読める状態。
+///
+/// 続くのは詳細画面を開いている間だけ。離れれば閉じる。
 final class MemoUnlocked extends MemoLockState {
-  const MemoUnlocked({required this.remaining, required this.relocksAt});
-
-  /// 再ロックまでの残り時間。
-  final Duration remaining;
-
-  /// 再ロックされる時刻。
-  final DateTime relocksAt;
+  const MemoUnlocked();
 
   @override
-  bool operator ==(Object other) =>
-      other is MemoUnlocked &&
-      other.remaining == remaining &&
-      other.relocksAt == relocksAt;
+  bool operator ==(Object other) => other is MemoUnlocked;
 
   @override
-  int get hashCode => Object.hash(remaining, relocksAt);
+  int get hashCode => (MemoUnlocked).hashCode;
 }
