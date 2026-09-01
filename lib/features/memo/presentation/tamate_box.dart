@@ -139,13 +139,16 @@ class _TamateSeaState extends State<TamateSea>
   );
 
   /// 動かしてよい状況か。端末の「視差効果を減らす」とテストでは止める。
-  bool _animate = true;
+  ///
+  /// null は「まだ決めていない」。設定が変わったときだけ動かし方を変える。
+  /// 毎回 repeat() を呼び直すと、そのたびに波が最初に戻ってしまう。
+  bool? _animate;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final animate = !MediaQuery.disableAnimationsOf(context);
-    if (animate == _animate && _waves.isAnimating == animate) {
+    if (animate == _animate) {
       return;
     }
     _animate = animate;
@@ -170,7 +173,7 @@ class _TamateSeaState extends State<TamateSea>
     // 段で上がると、待っているあいだずっとカクついて見える。
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: widget.progress ?? 0, end: widget.progress ?? 0),
-      duration: _animate ? const Duration(seconds: 1) : Duration.zero,
+      duration: _animate ?? true ? const Duration(seconds: 1) : Duration.zero,
       curve: Curves.linear,
       builder: (context, progress, _) => AnimatedBuilder(
         animation: _waves,
@@ -240,13 +243,14 @@ class _TamateSeaPainter extends CustomPainter {
       shift: phase,
       color: water.withValues(alpha: 0.20),
     );
+    // 位相の倍率は整数にする。半端だと一周したところで波が飛ぶ。
     _paintWave(
       canvas,
       size,
       level: level,
       amplitude: 2.4 * unit,
       wavelength: size.width * 0.45,
-      shift: -phase * 1.6,
+      shift: -phase * 2,
       color: water.withValues(alpha: 0.32),
       surfaceColor: surface.withValues(alpha: 0.45),
     );
