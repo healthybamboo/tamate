@@ -34,6 +34,11 @@ void main() {
     tester.platformDispatcher.localesTestValue = const [Locale('ja')];
     addTearDown(tester.platformDispatcher.clearLocalesTestValue);
 
+    // 波は止まらないアニメーションなので、テストでは動かさない。
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -153,6 +158,8 @@ void main() {
     clock.advance(const Duration(seconds: 30));
     await tick(tester);
 
+    // 絵と文言で縦に長いので、押す前に見えるところまで送る。
+    await tester.ensureVisible(find.text('待つのをやめる'));
     await tester.tap(find.text('待つのをやめる'));
     await tester.pumpAndSettle();
 

@@ -5,7 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 /// アプリ全体のテーマ定義。
 ///
 /// 「待つ」時間を過ごす画面なので、暗い方を主役にした低彩度の配色にしてある。
-/// 面と余白で区切り、枠線と影はできるだけ使わない。
+/// 色はアプリアイコン（`assets/icon/icon-*.svg`）から取っていて、ダークは
+/// 濃紺の地に金、ライトは同じ金を濃くしたもの。面と余白で区切り、枠線と影は
+/// できるだけ使わない。
 abstract final class AppTheme {
   /// ライト。紙より少し青い白を敷く。
   static ThemeData light() => _build(_lightScheme);
@@ -15,50 +17,50 @@ abstract final class AppTheme {
 
   static const ColorScheme _lightScheme = ColorScheme(
     brightness: Brightness.light,
-    primary: Color(0xFF3E5F92),
+    primary: Color(0xFF8A6A32),
     onPrimary: Color(0xFFFFFFFF),
-    primaryContainer: Color(0xFFDCE6F6),
-    onPrimaryContainer: Color(0xFF17263D),
-    secondary: Color(0xFF55637B),
+    primaryContainer: Color(0xFFF0E3C9),
+    onPrimaryContainer: Color(0xFF3A2C10),
+    secondary: Color(0xFF6E6552),
     onSecondary: Color(0xFFFFFFFF),
-    secondaryContainer: Color(0xFFDCE6F6),
-    onSecondaryContainer: Color(0xFF17263D),
+    secondaryContainer: Color(0xFFF0E3C9),
+    onSecondaryContainer: Color(0xFF3A2C10),
     error: Color(0xFF8F3B36),
     onError: Color(0xFFFFFFFF),
-    surface: Color(0xFFF4F6FA),
-    onSurface: Color(0xFF1B2029),
-    onSurfaceVariant: Color(0xFF5A6373),
+    surface: Color(0xFFF2F3F6),
+    onSurface: Color(0xFF1F1E1B),
+    onSurfaceVariant: Color(0xFF5F5849),
     surfaceContainerLowest: Color(0xFFFFFFFF),
-    surfaceContainerLow: Color(0xFFF0F3F8),
-    surfaceContainer: Color(0xFFEAEEF5),
-    surfaceContainerHigh: Color(0xFFE4E9F2),
-    surfaceContainerHighest: Color(0xFFDDE3EE),
-    outline: Color(0xFFB8C1D0),
-    outlineVariant: Color(0xFFD8DEE9),
+    surfaceContainerLow: Color(0xFFEEEFF2),
+    surfaceContainer: Color(0xFFE8E9ED),
+    surfaceContainerHigh: Color(0xFFE1E2E7),
+    surfaceContainerHighest: Color(0xFFD9DAE0),
+    outline: Color(0xFFB5AE9E),
+    outlineVariant: Color(0xFFDCD8CD),
   );
 
   static const ColorScheme _darkScheme = ColorScheme(
     brightness: Brightness.dark,
-    primary: Color(0xFF8AA9D6),
-    onPrimary: Color(0xFF10192A),
-    primaryContainer: Color(0xFF25344B),
-    onPrimaryContainer: Color(0xFFCFE0F5),
-    secondary: Color(0xFF9BA7BC),
-    onSecondary: Color(0xFF12151B),
-    secondaryContainer: Color(0xFF22303F),
-    onSecondaryContainer: Color(0xFFCFE0F5),
-    error: Color(0xFFE9A8A3),
+    primary: Color(0xFFC4A87C),
+    onPrimary: Color(0xFF241B0C),
+    primaryContainer: Color(0xFF3B3220),
+    onPrimaryContainer: Color(0xFFEBDCBE),
+    secondary: Color(0xFFAEA48F),
+    onSecondary: Color(0xFF16181F),
+    secondaryContainer: Color(0xFF332C1E),
+    onSecondaryContainer: Color(0xFFEBDCBE),
+    error: Color(0xFFE0A9A0),
     onError: Color(0xFF2A1210),
-    surface: Color(0xFF12151B),
-    onSurface: Color(0xFFE6E9EF),
-    onSurfaceVariant: Color(0xFFA8B0BF),
-    surfaceContainerLowest: Color(0xFF0D1015),
-    surfaceContainerLow: Color(0xFF171B22),
-    surfaceContainer: Color(0xFF1B2029),
-    surfaceContainerHigh: Color(0xFF212733),
-    surfaceContainerHighest: Color(0xFF272E3B),
-    outline: Color(0xFF49525F),
-    outlineVariant: Color(0xFF2C333F),
+    surface: Color(0xFF14171F),
+    onSurface: Color(0xFFEDE8DD),
+    onSurfaceVariant: Color(0xFFB2AA9A),
+    surfaceContainerLowest: Color(0xFF0F1219),
+    surfaceContainerLow: Color(0xFF191D26),
+    surfaceContainer: Color(0xFF1B1F2A),
+    surfaceContainerHigh: Color(0xFF232835),
+    surfaceContainerHighest: Color(0xFF2A303E),
+    outline: Color(0xFF565042),
+    outlineVariant: Color(0xFF322E27),
   );
 
   /// 角の丸み。面で見せるので、どの部品も同じ丸みで揃える。
