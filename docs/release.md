@@ -165,6 +165,20 @@ Secrets は要らないが、Actions 全体が `main` に push できるよう�
 5. Applications からこのリポジトリを追加する。`codemagic.yaml` は自動で読まれる
 6. 署名は Codemagic に任せる（`ios_signing.distribution_type: app_store`）。証明書と
    プロビジョニングプロファイルは API キー経由で取得・作成される。手元の鍵は要らない
+7. **設定を `codemagic.yaml` に切り替える**。App settings の上部で
+   「Switch to YAML configuration」を選ぶ
+
+Workflow Editor（UI 設定）のままだと `codemagic.yaml` は読まれず、`flutter: 3.27.1` の固定も
+効かない。最新の Flutter で走ると ipa を作る前に Swift Package Manager への移行が入り、
+dev 依存の `flutter_native_splash` の解決に失敗して落ちる。
+
+```
+xcodebuild: error: Could not resolve package dependencies:
+  public headers ("include") directory path for 'flutter_native_splash' is invalid
+```
+
+ログに `依存を入れる` や `静的解析` といったステップ名が出ていなければ、UI 設定で走っている。
+どうしても UI 設定のまま動かすなら、そちらの Flutter バージョンも 3.27.1 に合わせる。
 
 Android も出すなら、Google Play のサービスアカウント（`GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`）と
 アップロード鍵を Codemagic のグループ `google_play` / `tamate_upload` に入れる。
