@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  # リリースの流れからも呼ぶ。
+  workflow_call:
   push:
     branches: [main]
   pull_request:

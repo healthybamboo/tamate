@@ -1,0 +1,69 @@
+#!/bin/bash
+# 直近のバージョンタグから、次のバージョンを決める。
+#
+# 例: 1.4.1 に対して -t minor を渡すと 1.5.0 を返す。タグが1つも無ければ 1.0.0。
+
+set -euo pipefail
+
+# Github に登録されている最新のタグを取る。
+get_current_version_tag() {
+    git fetch --tags --prune --quiet
+    git tag --sort=v:refname | tail -n 1
+}
+
+# 種類に応じてカウントアップしたバージョンを返す。
+get_countup_version() {
+    local release_type=$1
+    local current
+    current=$(get_current_version_tag)
+
+    if [ -z "$current" ]; then
+        echo "1.0.0"
+        return 0
+    fi
+
+    local version=(${current//./ })
+    case "$release_type" in
+    major)
+        ((version[0] += 1))
+        version[1]=0
+        version[2]=0
+        ;;
+    minor)
+        ((version[1] += 1))
+        version[2]=0
+        ;;
+    patch)
+        ((version[2] += 1))
+        ;;
+    *)
+        echo "Error: unknown release type '$release_type'." 1>&2
+        return 1
+        ;;
+    esac
+
+    (
+        IFS="."
+        echo "${version[*]}"
+    )
+}
+
+type=""
+while getopts "t:" opt; do
+    case ${opt} in
+    t)
+        type=$OPTARG
+        ;;
+    *)
+        echo "Usage: $0 -t <major|minor|patch>" 1>&2
+        exit 1
+        ;;
+    esac
+done
+
+if [ -z "$type" ]; then
+    echo "Error: -t (type) must be specified." 1>&2
+    exit 1
+fi
+
+get_countup_version "$type"

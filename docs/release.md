@@ -69,6 +69,76 @@ dart run flutter_native_splash:create       # スプラッシュを生成
 CocoaPods が壊れている場合は `brew upgrade cocoapods` で直る（Homebrew の ruby を上げたまま
 cocoapods を入れ直していないと、gem の解決に失敗する）。
 
+## リリースの流れ
+
+`wageria` と同じ形にしてある。バージョンを決めるのは GitHub Actions、ビルドと配信は
+Codemagic、その間をつなぐのが「リリース用のプルリクエスト」。
+
+```
+   main
+    │  Actions: Release を手動で実行（種類 major/minor/patch を選ぶ）
+    ├─ 解析とテスト
+    ├─ pubspec.yaml のバージョンとビルド番号を更新して push
+    ├─ タグ <version> を打つ / ドラフトのリリースノートを作る
+    ├─ release/<version> ブランチを作る
+    └─ release/<version> → release/ios へ PR を作る
+                            │  Codemagic が PR を見てビルド開始
+                            ├─ 解析・テスト・ipa
+                            ├─ TestFlight へ配信
+                            └─ 中身を確かめて PR をマージする
+```
+
+- **リリース用のブランチを分けている理由**: リリース中でも `main` にマージしてよくするため。
+  リリースは `release/<version>` の内容で固定される
+- **PR が1つだけである理由**: デプロイ用ブランチに複数の PR があると、どれをマージすべきか
+  分からなくなる。新しいリリースを作ると、古い PR は自動で閉じる
+- ビルド番号は Codemagic 側でも TestFlight の最新 + 1 を振るので、番号が重なることはない
+
+### 実行のしかた
+
+1. GitHub の Actions → **Release** → Run workflow
+2. `release_type` を選ぶ（バージョンを直接入れる場合は `release_version` に書く）
+3. iOS / Android のどちらを出すか選ぶ（Android は Codemagic 側の設定が済むまで off）
+4. しばらくすると `[リリース][ios] version: x.y.z` という PR ができる
+5. Codemagic のビルドが終わり、TestFlight に届いたのを確認したら PR をマージする
+6. ドラフトのリリースノートを整えて公開する
+
+### 一度だけやること
+
+**GitHub 側**
+
+- `release/ios`（Android も出すなら `release/android`）ブランチを作っておく。PR の宛先になる
+- ラベル `リリース` / `ios` / `android` を作っておく（PR に付ける）
+
+**Apple 側**
+
+1. **Apple Developer Program に加入する**（年 99 USD）。これが無いと TestFlight に配れない
+2. **App Store Connect でアプリを登録する**
+   - プラットフォーム: iOS、Bundle ID: `net.bamgrove.tamate`、名前: `tamate`
+   - Bundle ID が Developer ポータルに無ければ、Certificates, Identifiers & Profiles で先に作る
+3. **App Store Connect API キーを作る**
+   - App Store Connect → Users and Access → Integrations → App Store Connect API
+   - アクセス権は「App Manager」。発行された `.p8` は一度しか落とせないので保管する
+
+**Codemagic 側**
+
+4. Teams → Integrations → App Store Connect に上のキーを追加する。
+   **名前は `tamate` にする**（`codemagic.yaml` がこの名前で参照している。変えるなら
+   `environment.integrations.app_store_connect` も直す）
+5. Applications からこのリポジトリを追加する。`codemagic.yaml` は自動で読まれる
+6. 署名は Codemagic に任せる（`ios_signing.distribution_type: app_store`）。証明書と
+   プロビジョニングプロファイルは API キー経由で取得・作成される。手元の鍵は要らない
+
+Android も出すなら、Google Play のサービスアカウント（`GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`）と
+アップロード鍵を Codemagic のグループ `google_play` / `tamate_upload` に入れる。
+
+### 注意
+
+- `flutter: 3.27.1` を Codemagic と GitHub Actions の両方で固定してある。上げるときは両方直す
+- 輸出コンプライアンスの質問を毎回出さないよう、`Info.plist` に
+  `ITSAppUsesNonExemptEncryption = false` を入れてある。通信は書体の取得（HTTPS）だけなので
+  この申告で足りる
+
 ## ストア提出物
 
 掲載文とプライバシーの回答は `docs/store.md` にまとめてある。
