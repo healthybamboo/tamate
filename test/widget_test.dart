@@ -345,4 +345,77 @@ void main() {
     );
     expect(painter.size.width, 101 * 16);
   });
+
+  testWidgets('問いかけだけのメモは、すべて「はい」で開く', (tester) async {
+    await pumpApp(tester);
+
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'タイトル'), '秘密');
+    await tester.enterText(find.widgetWithText(TextField, '本文'), 'ここは読めないはず');
+
+    await tester.tap(find.text('問いかけだけ'));
+    await tester.pumpAndSettle();
+
+    // 候補から2問入れる。
+    await tester.tap(find.text('一年後の自分に、後悔はないですか'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('目を瞑って、本当にそうか確かめましたか'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('秘密'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('開く'));
+    await tester.pumpAndSettle();
+
+    // 待たずに問いへ進む。本文はまだ出ない。
+    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('ここは読めないはず'), findsNothing);
+    // 登録した順に出る。
+    expect(find.text('一年後の自分に、後悔はないですか'), findsOneWidget);
+
+    await tester.tap(find.text('はい'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 2'), findsOneWidget);
+    expect(find.text('目を瞑って、本当にそうか確かめましたか'), findsOneWidget);
+
+    await tester.tap(find.text('はい'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ここは読めないはず'), findsOneWidget);
+    expect(find.text('1回開いた'), findsOneWidget);
+  });
+
+  testWidgets('「いいえ」を選ぶと開かず、ロック中に戻る', (tester) async {
+    repository = InMemoryMemoRepository([
+      Memo(
+        id: 'ask',
+        title: '秘密',
+        body: 'ここは読めないはず',
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
+        unlockRule: const QuestionUnlockRule(['後悔しませんか']),
+      ),
+    ]);
+
+    await pumpApp(tester);
+    await tester.tap(find.text('秘密'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('開く'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('後悔しませんか'), findsOneWidget);
+
+    await tester.tap(find.text('いいえ'));
+    await tester.pumpAndSettle();
+
+    // 一覧に戻され、ロック中のまま。本文はどこにも出ない。
+    expect(find.text('開かずに閉じました'), findsOneWidget);
+    expect(find.text('ロック中'), findsOneWidget);
+    expect(find.text('ここは読めないはず'), findsNothing);
+    expect(repository.memos.single.declineCount, 1);
+  });
 }

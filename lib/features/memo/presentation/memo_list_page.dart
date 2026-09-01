@@ -94,6 +94,7 @@ class _MemoTile extends ConsumerWidget {
         MemoLocked() => Icons.lock_outline,
         MemoWaiting(:final running) =>
           running ? Icons.hourglass_bottom : Icons.pause_circle_outline,
+        MemoAwaitingAnswers() => Icons.help_outline,
         MemoUnlocked() => Icons.lock_open_outlined,
       };
 
@@ -107,6 +108,7 @@ class _MemoTile extends ConsumerWidget {
             final left =>
               l10n.waitingRemainingPaused(formatRemaining(l10n, left)),
           },
+        MemoAwaitingAnswers() => l10n.stateAwaitingAnswers,
         MemoUnlocked(:final remaining) =>
           l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
       };

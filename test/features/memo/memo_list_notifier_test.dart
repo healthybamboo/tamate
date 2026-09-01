@@ -341,4 +341,90 @@ void main() {
       );
     });
   });
+
+  group('問いかけ', () {
+    const questionRule = AllOfUnlockRule([
+      WaitDurationUnlockRule(Duration(minutes: 1)),
+      QuestionUnlockRule(['後悔しませんか']),
+    ]);
+
+    Future<String> addQuestionMemo() => addMemo(unlockRule: questionRule);
+
+    test('問いだけのメモでは通知の許可を求めない', () async {
+      final id = await addMemo(
+        unlockRule: const QuestionUnlockRule(['後悔しませんか']),
+      );
+
+      await notifier().startWaiting(id, notification: notification);
+
+      expect(notifications.permissionRequests, 0);
+      expect(notifications.scheduled, isEmpty);
+    });
+
+    test('待機が明けると問いに移る', () async {
+      final id = await addQuestionMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+
+      expect(
+        container.read(memoProvider(id))!.lockStateAt(clock.now()),
+        const MemoAwaitingAnswers(questions: ['後悔しませんか']),
+      );
+    });
+
+    test('すべて「はい」なら解錠され、開封に記録される', () async {
+      final id = await addQuestionMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+
+      await notifier().acceptAnswers(id);
+
+      final memo = container.read(memoProvider(id))!;
+      expect(memo.lockStateAt(clock.now()).canRead, isTrue);
+      expect(memo.openCount, 1);
+      expect(memo.declineCount, 0);
+    });
+
+    test('「いいえ」なら開かず、待ち直しになる', () async {
+      final id = await addQuestionMemo();
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+
+      await notifier().declineAnswers(id);
+
+      final memo = container.read(memoProvider(id))!;
+      expect(memo.lockStateAt(clock.now()), const MemoLocked());
+      expect(memo.declineCount, 1);
+      expect(memo.openCount, 0);
+      expect(notifications.canceled, [id]);
+    });
+
+    test('待機中は答えを受け付けない', () async {
+      final id = await addQuestionMemo();
+      await notifier().startWaiting(id, notification: notification);
+
+      await notifier().acceptAnswers(id);
+
+      expect(
+        container.read(memoProvider(id))!.lockStateAt(clock.now()).canRead,
+        isFalse,
+      );
+    });
+
+    test('問いは解錠中だけ直せる', () async {
+      final id = await addQuestionMemo();
+
+      expect(await notifier().editQuestions(id, ['別の問い']), isFalse);
+
+      await notifier().startWaiting(id, notification: notification);
+      clock.advance(const Duration(minutes: 1));
+      await notifier().acceptAnswers(id);
+
+      expect(await notifier().editQuestions(id, ['別の問い']), isTrue);
+      expect(
+        container.read(memoProvider(id))!.unlockRule.questions,
+        ['別の問い'],
+      );
+    });
+  });
 }

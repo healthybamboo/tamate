@@ -268,4 +268,55 @@ void main() {
       expect(extended.wait, wait);
     });
   });
+
+  group('問いかけ', () {
+    const questionRule = AllOfUnlockRule([
+      WaitDurationUnlockRule(Duration(minutes: 3)),
+      QuestionUnlockRule(['後悔しませんか']),
+    ]);
+
+    Memo questionMemo({MemoWait? wait}) => Memo(
+          id: 'id',
+          title: 'タイトル',
+          body: '本文',
+          createdAt: createdAt,
+          updatedAt: createdAt,
+          unlockRule: questionRule,
+          wait: wait,
+        );
+
+    test('待機が明けても、問いに答えるまで読めない', () {
+      final state = questionMemo(wait: MemoWait.startedAt(createdAt))
+          .lockStateAt(createdAt.add(const Duration(minutes: 5)));
+
+      expect(state, const MemoAwaitingAnswers(questions: ['後悔しませんか']));
+      expect(state.canRead, isFalse);
+    });
+
+    test('いいえで引き返すと、待機の経過ごと捨てる', () {
+      final at = createdAt.add(const Duration(minutes: 5));
+      final declined =
+          questionMemo(wait: MemoWait.startedAt(createdAt)).decline(at);
+
+      expect(declined.wait, isNull);
+      expect(declined.declinedAt, [at]);
+      expect(declined.declineCount, 1);
+      expect(declined.lockStateAt(at), const MemoLocked());
+    });
+
+    test('問いは後から差し替えられる', () {
+      final edited = questionMemo().withQuestions(['育てた問い']);
+
+      expect(edited.unlockRule.questions, ['育てた問い']);
+      expect(edited.unlockRule.expectedWait, const Duration(minutes: 3));
+    });
+
+    test('JSON を往復しても引き返した記録が残る', () {
+      final at = createdAt.add(const Duration(minutes: 5));
+      final declined =
+          questionMemo(wait: MemoWait.startedAt(createdAt)).decline(at);
+
+      expect(Memo.fromJson(declined.toJson()), declined);
+    });
+  });
 }

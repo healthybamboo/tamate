@@ -42,6 +42,23 @@ final class MemoWaiting extends MemoLockState {
   int get hashCode => Object.hash(remaining, running);
 }
 
+/// 待機は終わったが、問いへの答えを待っている状態。
+final class MemoAwaitingAnswers extends MemoLockState {
+  const MemoAwaitingAnswers({required this.questions});
+
+  /// 答えてもらう問い。
+  final List<String> questions;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MemoAwaitingAnswers &&
+      other.questions.length == questions.length &&
+      other.questions.every(questions.contains);
+
+  @override
+  int get hashCode => Object.hashAll(questions);
+}
+
 /// 解錠されて本文が読める状態。
 final class MemoUnlocked extends MemoLockState {
   const MemoUnlocked({required this.remaining, required this.relocksAt});

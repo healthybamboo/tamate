@@ -181,5 +181,40 @@
       }
     }
   },
-  "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録"
+  "openHistoryChartCaption": "縦が時刻、横が日付。濃いほど回数が多い。左へ辿ると古い記録",
+  "stateAwaitingAnswers": "問いに答える",
+  "questionProgress": "{current} / {total}",
+  "@questionProgress": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "actionYes": "はい",
+  "actionNo": "いいえ",
+  "declinedNotice": "開かずに閉じました",
+  "declineCountLabel": "{count}回引き返した",
+  "@declineCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "unlockKindLabel": "解錠のしかた",
+  "unlockKindWait": "待つ",
+  "unlockKindWaitAndQuestion": "待つ + 問いかけ",
+  "unlockKindQuestion": "問いかけだけ",
+  "questionsLabel": "問いかけ",
+  "questionsHelper": "開く前に自分へ投げる問い。すべてに「はい」で答えると開きます",
+  "questionAdd": "問いを追加",
+  "questionHint": "例: 一年後の自分に、後悔はないですか",
+  "questionsRequired": "問いを1つ以上書いてください",
+  "questionSuggestion1": "今これを開いて、死ぬときに後悔しませんか",
+  "questionSuggestion2": "一年後の自分に、後悔はないですか",
+  "questionSuggestion3": "目を瞑って、本当にそうか確かめましたか"
 }
