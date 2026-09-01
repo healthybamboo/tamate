@@ -109,8 +109,9 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     return switch (_kind) {
       UnlockKind.wait => wait,
       UnlockKind.question => QuestionUnlockRule(questions),
+      // 問いは待ち始める前に。待ってから聞くのでは、聞く意味が薄い。
       UnlockKind.waitAndQuestion =>
-        AllOfUnlockRule([wait, QuestionUnlockRule(questions)]),
+        AllOfUnlockRule([QuestionUnlockRule(questions), wait]),
     };
   }
 
@@ -243,6 +244,8 @@ enum UnlockKind {
 }
 
 /// 解錠のしかたの選択。
+///
+/// 文言が長く、横に並べきれないので折り返す。画面幅で見切れないことを優先する。
 class _UnlockKindField extends StatelessWidget {
   const _UnlockKindField({required this.value, required this.onChanged});
 
@@ -259,31 +262,27 @@ class _UnlockKindField extends StatelessWidget {
       children: [
         Text(l10n.unlockKindLabel, style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SegmentedButton<UnlockKind>(
-            segments: [
-              ButtonSegment(
-                value: UnlockKind.wait,
-                label: Text(l10n.unlockKindWait),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final kind in UnlockKind.values)
+              ChoiceChip(
+                label: Text(_label(l10n, kind)),
+                selected: kind == value,
+                onSelected: (_) => onChanged(kind),
               ),
-              ButtonSegment(
-                value: UnlockKind.waitAndQuestion,
-                label: Text(l10n.unlockKindWaitAndQuestion),
-              ),
-              ButtonSegment(
-                value: UnlockKind.question,
-                label: Text(l10n.unlockKindQuestion),
-              ),
-            ],
-            selected: {value},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) => onChanged(selection.first),
-          ),
+          ],
         ),
       ],
     );
   }
+
+  String _label(AppLocalizations l10n, UnlockKind kind) => switch (kind) {
+        UnlockKind.wait => l10n.unlockKindWait,
+        UnlockKind.waitAndQuestion => l10n.unlockKindWaitAndQuestion,
+        UnlockKind.question => l10n.unlockKindQuestion,
+      };
 }
 
 /// 待機時間の選択。選択肢は [UnlockPolicy.waitOptions]。
@@ -303,20 +302,17 @@ class _WaitDurationField extends StatelessWidget {
       children: [
         Text(l10n.memoWaitDurationLabel, style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SegmentedButton<Duration>(
-            segments: [
-              for (final option in UnlockPolicy.waitOptions)
-                ButtonSegment<Duration>(
-                  value: option,
-                  label: Text(formatWaitLength(l10n, option)),
-                ),
-            ],
-            selected: {value},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) => onChanged(selection.first),
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in UnlockPolicy.waitOptions)
+              ChoiceChip(
+                label: Text(formatWaitLength(l10n, option)),
+                selected: option == value,
+                onSelected: (_) => onChanged(option),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(l10n.memoWaitDurationHelper, style: theme.textTheme.bodySmall),

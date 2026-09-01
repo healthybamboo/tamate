@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 import 'package:tamate/features/memo/domain/memo_lock_state.dart';
 import 'package:tamate/features/memo/domain/memo_wait.dart';
-import 'package:tamate/features/memo/domain/unlock_policy.dart';
 import 'package:tamate/features/memo/domain/unlock_rule.dart';
 
 void main() {
@@ -40,28 +39,27 @@ void main() {
       final state = memo(wait: MemoWait(createdAt))
           .lockStateAt(createdAt.add(const Duration(minutes: 11)));
 
-      expect(state.canRead, isTrue);
+      expect(state, const MemoUnlocked());
     });
 
-    test('閲覧可能時間を過ぎたら再びロック中になる', () {
+    test('解錠したあとは、時間が経っても読めるまま', () {
+      // 閉じるまでは読める。閉じたときに cancelWaiting で落とす。
       final unlockedAt = createdAt.add(const Duration(minutes: 10));
 
       expect(
         memo(unlockedAt: unlockedAt)
-            .lockStateAt(unlockedAt.add(UnlockPolicy.openWindow)),
-        const MemoLocked(),
+            .lockStateAt(unlockedAt.add(const Duration(hours: 3))),
+        const MemoUnlocked(),
       );
     });
 
-    test('解錠を記録した時刻から閲覧可能時間を数える', () {
-      final unlockedAt = createdAt.add(const Duration(minutes: 30));
-      final state = memo(unlockedAt: unlockedAt)
-          .lockStateAt(unlockedAt.add(const Duration(minutes: 1)));
+    test('閉じるとロック中に戻る', () {
+      final closed =
+          memo(unlockedAt: createdAt.add(const Duration(minutes: 10)))
+              .cancelWaiting();
 
-      expect(
-        (state as MemoUnlocked).relocksAt,
-        unlockedAt.add(UnlockPolicy.openWindow),
-      );
+      expect(closed.unlockedAt, isNull);
+      expect(closed.lockStateAt(createdAt), const MemoLocked());
     });
   });
 
@@ -204,8 +202,8 @@ void main() {
 
   group('問いかけ', () {
     const questionRule = AllOfUnlockRule([
-      WaitDurationUnlockRule(Duration(minutes: 3)),
       QuestionUnlockRule(['後悔しませんか']),
+      WaitDurationUnlockRule(Duration(minutes: 3)),
     ]);
 
     Memo questionMemo({MemoWait? wait}) => Memo(
@@ -218,7 +216,7 @@ void main() {
           wait: wait,
         );
 
-    test('待機が明けても、問いに答えるまで読めない', () {
+    test('開いた直後は、待つ前に問いへ答える', () {
       final state = questionMemo(wait: MemoWait(createdAt))
           .lockStateAt(createdAt.add(const Duration(minutes: 5)));
 
@@ -226,11 +224,24 @@ void main() {
       expect(state.canRead, isFalse);
     });
 
-    test('いいえで引き返すと、待機の経過ごと捨てる', () {
+    test('答え終えたところから待機が始まる', () {
+      final answeredAt = createdAt.add(const Duration(minutes: 5));
+      final answered =
+          questionMemo(wait: MemoWait(createdAt)).markAnswered(answeredAt);
+
+      // 答えるのにかけた5分は待機に数えない。
+      expect(
+        answered.lockStateAt(answeredAt.add(const Duration(minutes: 1))),
+        const MemoWaiting(remaining: Duration(minutes: 2)),
+      );
+    });
+
+    test('いいえで引き返すと、待機の経過も答えも捨てる', () {
       final at = createdAt.add(const Duration(minutes: 5));
       final declined = questionMemo(wait: MemoWait(createdAt)).decline(at);
 
       expect(declined.wait, isNull);
+      expect(declined.answeredAt, isNull);
       expect(declined.declinedAt, [at]);
       expect(declined.declineCount, 1);
       expect(declined.lockStateAt(at), const MemoLocked());

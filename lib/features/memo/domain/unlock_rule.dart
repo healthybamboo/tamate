@@ -59,8 +59,13 @@ abstract class UnlockRule {
   /// 保存時の識別子。
   String get type;
 
-  /// 待機画面を見ていた時間が [elapsed] のとき、解錠条件を満たしているか。
-  UnlockProgress progressFor(Duration elapsed);
+  /// 解錠条件を満たしているか。
+  ///
+  /// [elapsed] は待機画面を見ていた時間、[answered] は問いに答え終えたか。
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  });
 
   /// 解錠までにかかる時間。時間で測れないルールでは null を返す。
   ///
@@ -100,7 +105,10 @@ final class WaitDurationUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressFor(Duration elapsed) {
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  }) {
     final remaining = duration - elapsed;
     if (remaining <= Duration.zero) {
       return const UnlockSatisfied();
@@ -161,8 +169,13 @@ final class QuestionUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressFor(Duration elapsed) =>
-      UnlockNeedsAnswers(questions: questions);
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  }) =>
+      answered
+          ? const UnlockSatisfied()
+          : UnlockNeedsAnswers(questions: questions);
 
   @override
   Duration? get expectedWait => null;
@@ -209,9 +222,12 @@ final class AllOfUnlockRule extends UnlockRule {
   String get type => typeName;
 
   @override
-  UnlockProgress progressFor(Duration elapsed) {
+  UnlockProgress progressFor({
+    required Duration elapsed,
+    required bool answered,
+  }) {
     for (final rule in rules) {
-      final progress = rule.progressFor(elapsed);
+      final progress = rule.progressFor(elapsed: elapsed, answered: answered);
       if (progress is! UnlockSatisfied) {
         return progress;
       }

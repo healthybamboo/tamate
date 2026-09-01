@@ -55,21 +55,14 @@ final class MemoAwaitingAnswers extends MemoLockState {
 }
 
 /// 解錠されて本文が読める状態。
+///
+/// 続くのは詳細画面を開いている間だけ。離れれば閉じる。
 final class MemoUnlocked extends MemoLockState {
-  const MemoUnlocked({required this.remaining, required this.relocksAt});
-
-  /// 再ロックまでの残り時間。
-  final Duration remaining;
-
-  /// 再ロックされる時刻。
-  final DateTime relocksAt;
+  const MemoUnlocked();
 
   @override
-  bool operator ==(Object other) =>
-      other is MemoUnlocked &&
-      other.remaining == remaining &&
-      other.relocksAt == relocksAt;
+  bool operator ==(Object other) => other is MemoUnlocked;
 
   @override
-  int get hashCode => Object.hash(remaining, relocksAt);
+  int get hashCode => (MemoUnlocked).hashCode;
 }

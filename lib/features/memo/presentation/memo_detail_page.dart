@@ -61,9 +61,9 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
           return;
         }
         _foreground = foreground;
-        // 背面に回ったら待機は捨てる。ちょっと離れる、を作らないため。
+        // 背面に回ったら閉じる。ちょっと離れる、を作らないため。
         if (!foreground) {
-          unawaited(_notifier.cancelWaiting(widget.memoId));
+          unawaited(_notifier.close(widget.memoId));
         } else {
           setState(() {});
         }
@@ -80,7 +80,7 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // アプリごと畳まれていれば保存先はもう無い。その場合も次の起動で
       // 待機は捨てられるので、ここで諦めて構わない。
-      unawaited(notifier.cancelWaiting(memoId).catchError((Object _) {}));
+      unawaited(notifier.close(memoId).catchError((Object _) {}));
     });
     _lifecycleListener.dispose();
     super.dispose();
@@ -149,9 +149,8 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
                     onAccepted: _acceptAnswers,
                     onDeclined: _declineAnswers,
                   ),
-                MemoUnlocked(:final remaining) => _UnlockedView(
+                MemoUnlocked() => _UnlockedView(
                     memo: memo,
-                    remaining: remaining,
                     showSuggestion: !_suggestionDismissed,
                     onExtendWait: _extendWait,
                     onReview: () =>
@@ -225,7 +224,7 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
   /// 待つのをやめる。画面を離れるのと同じで、経過は捨てる。
   Future<void> _stopWaiting() async {
-    await _notifier.cancelWaiting(widget.memoId);
+    await _notifier.close(widget.memoId);
   }
 
   Future<void> _delete() async {
@@ -366,7 +365,6 @@ class _WaitingView extends StatelessWidget {
 class _UnlockedView extends StatelessWidget {
   const _UnlockedView({
     required this.memo,
-    required this.remaining,
     required this.showSuggestion,
     required this.onExtendWait,
     required this.onReview,
@@ -375,7 +373,6 @@ class _UnlockedView extends StatelessWidget {
   });
 
   final Memo memo;
-  final Duration remaining;
   final bool showSuggestion;
   final VoidCallback onExtendWait;
   final VoidCallback onReview;
@@ -404,7 +401,7 @@ class _UnlockedView extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
+                    l10n.unlockedNotice,
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: theme.colorScheme.onSecondaryContainer,
                     ),
@@ -429,11 +426,6 @@ class _UnlockedView extends StatelessWidget {
                     onDismiss: onDismissSuggestion,
                   ),
                 SelectableText(memo.body, style: theme.textTheme.bodyLarge),
-                const SizedBox(height: 24),
-                Text(
-                  l10n.unlockedRelockNotice,
-                  style: theme.textTheme.bodySmall,
-                ),
               ],
             ),
           ),

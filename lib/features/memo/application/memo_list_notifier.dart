@@ -19,20 +19,13 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
   @override
   Future<List<Memo>> build() async {
     final memos = await _repository.fetchAll();
-    // 前回の待機は捨てる。アプリを閉じている間は待っていない。
-    return _sorted([for (final memo in memos) memo.dropWait()]);
+    // 前回の待機も解錠も捨てる。アプリを閉じた時点で閉じたのと同じ。
+    return _sorted([for (final memo in memos) memo.cancelWaiting()]);
   }
 
-  /// 保存内容を読み直す。
-  ///
-  /// アプリ復帰時に呼ぶ。閲覧可能時間が過ぎたメモの待機状態はここで片付ける。
+  /// 保存内容を読み直す。アプリ復帰時に呼ぶ。
   Future<void> refresh() async {
-    final stored = await _repository.fetchAll();
-    final cleaned = _withRelockedCleared(stored, _now);
-    state = AsyncData(_sorted(cleaned));
-    if (!_sameMemos(stored, cleaned)) {
-      await _repository.saveAll(cleaned);
-    }
+    state = AsyncData(_sorted(await _repository.fetchAll()));
   }
 
   Future<void> add({
@@ -93,13 +86,13 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     );
   }
 
-  /// 待機をやめてロック中に戻す。経過は捨てる。
+  /// メモを閉じてロック中に戻す。待機の経過も解錠も捨てる。
   ///
-  /// 待機画面を離れたときにも呼ぶ。画面が捨てられる途中でも呼ばれるので、
+  /// 詳細画面を離れたときに呼ぶ。画面が捨てられる途中でも呼ばれるので、
   /// Provider から引くものは最初の await より前に済ませておく。
-  Future<void> cancelWaiting(String id) async {
+  Future<void> close(String id) async {
     final memo = _find(id);
-    if (memo?.wait == null) {
+    if (memo == null || (memo.wait == null && memo.unlockedAt == null)) {
       return;
     }
 
@@ -108,7 +101,7 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     );
   }
 
-  /// 問いにすべて「はい」で答えたときに呼ぶ。解錠して記録を残す。
+  /// 問いにすべて「はい」で答えたときに呼ぶ。ここから待機が始まる。
   Future<void> acceptAnswers(String id) async {
     final now = _now;
     final memo = _find(id);
@@ -118,7 +111,7 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
 
     await _mutate(
       (memos) =>
-          memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
+          memos.map((e) => e.id == id ? e.markAnswered(now) : e).toList(),
     );
   }
 
@@ -193,30 +186,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     final next = _sorted(transform(current));
     state = AsyncData(next);
     await repository.saveAll(next);
-  }
-
-  /// 再ロックされたメモの待機状態を落とす。
-  ///
-  /// 状態は時刻から導出しているので消さなくても表示は正しいが、
-  /// 意味を失った待機開始時刻を残しておく理由もないので片付ける。
-  List<Memo> _withRelockedCleared(List<Memo> memos, DateTime now) => memos
-      .map((memo) => _isRelocked(memo, now) ? memo.cancelWaiting() : memo)
-      .toList();
-
-  /// 解錠されたあと、閲覧可能時間まで過ぎたか。待機中は false。
-  bool _isRelocked(Memo memo, DateTime now) =>
-      memo.unlockedAt != null && !memo.lockStateAt(now).canRead;
-
-  bool _sameMemos(List<Memo> a, List<Memo> b) {
-    if (a.length != b.length) {
-      return false;
-    }
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /// 更新日時の新しい順。

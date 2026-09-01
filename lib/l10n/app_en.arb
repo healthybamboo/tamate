@@ -26,8 +26,6 @@
   "lockedWaitNotice": "Opening it starts a {duration} wait",
   "waitingRemaining": "{remaining} left",
   "waitingUnlockAt": "Unlocks at {time}",
-  "unlockedRemaining": "Readable for {remaining}",
-  "unlockedRelockNotice": "Reading it again later means waiting again",
   "memoWaitDurationLabel": "Wait time",
   "memoWaitDurationHelper": "Can be changed later while unlocked",
   "memoBodyLockedLabel": "Editable only while unlocked",
@@ -80,5 +78,6 @@
   "memoListSummaryTotal": "{count, plural, =1{1 memo} other{{count} memos}}",
   "memoListSummaryReadable": "{count} readable",
   "memoListSummaryWaiting": "{count} waiting",
-  "summarySeparator": " · "
+  "summarySeparator": " · ",
+  "unlockedNotice": "Readable only while this screen is open"
 }

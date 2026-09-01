@@ -83,11 +83,11 @@ void main() {
     expect(memo.lockStateAt(clock.now()).canRead, isTrue);
   });
 
-  test('cancelWaiting で待機がリセットされ、通知も取り消される', () async {
+  test('close で待機がリセットされる', () async {
     final id = await addMemo();
     await notifier().startWaiting(id);
 
-    await notifier().cancelWaiting(id);
+    await notifier().close(id);
 
     expect(container.read(memoProvider(id))!.wait, isNull);
 
@@ -141,31 +141,22 @@ void main() {
     expect(memo.openCount, 1);
   });
 
-  test('refresh は再ロックされたメモの解錠の記録を片付ける', () async {
+  test('close は解錠中のメモも閉じる', () async {
     final id = await addMemo();
     await notifier().startWaiting(id);
     clock.advance(rule.duration);
     await notifier().settleUnlock(id);
-    clock.advance(UnlockPolicy.openWindow);
 
-    await notifier().refresh();
+    await notifier().close(id);
 
-    expect(container.read(memoProvider(id))!.unlockedAt, isNull);
-    expect(repository.memos.single.wait, isNull);
+    final memo = container.read(memoProvider(id))!;
+    expect(memo.unlockedAt, isNull);
+    expect(memo.lockStateAt(clock.now()), const MemoLocked());
+    // 開いた記録は消えない。
+    expect(memo.openCount, 1);
   });
 
-  test('refresh は待機中のメモには触らない', () async {
-    final id = await addMemo();
-    await notifier().startWaiting(id);
-    final wait = container.read(memoProvider(id))!.wait;
-    clock.advance(const Duration(minutes: 1));
-
-    await notifier().refresh();
-
-    expect(container.read(memoProvider(id))!.wait, wait);
-  });
-
-  test('アプリを再起動すると待機は消える', () async {
+  test('アプリを再起動すると待機も解錠も消える', () async {
     final id = await addMemo();
     await notifier().startWaiting(id);
     clock.advance(const Duration(minutes: 4));
@@ -187,7 +178,7 @@ void main() {
     clock.advance(const Duration(minutes: 9));
 
     // 画面を離れると呼ばれる。
-    await notifier().cancelWaiting(id);
+    await notifier().close(id);
 
     expect(container.read(memoProvider(id))!.wait, isNull);
 
@@ -201,8 +192,8 @@ void main() {
 
   group('問いかけ', () {
     const questionRule = AllOfUnlockRule([
-      WaitDurationUnlockRule(Duration(minutes: 1)),
       QuestionUnlockRule(['後悔しませんか']),
+      WaitDurationUnlockRule(Duration(minutes: 1)),
     ]);
 
     Future<String> addQuestionMemo() => addMemo(unlockRule: questionRule);
@@ -215,10 +206,9 @@ void main() {
       await notifier().startWaiting(id);
     });
 
-    test('待機が明けると問いに移る', () async {
+    test('開いた直後は、待つ前に問いへ移る', () async {
       final id = await addQuestionMemo();
       await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 1));
 
       expect(
         container.read(memoProvider(id))!.lockStateAt(clock.now()),
@@ -226,23 +216,29 @@ void main() {
       );
     });
 
-    test('すべて「はい」なら解錠され、開封に記録される', () async {
+    test('すべて「はい」で待機に入り、待ち終えると解錠される', () async {
       final id = await addQuestionMemo();
       await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 1));
+      clock.advance(const Duration(minutes: 5));
 
       await notifier().acceptAnswers(id);
 
-      final memo = container.read(memoProvider(id))!;
-      expect(memo.lockStateAt(clock.now()).canRead, isTrue);
-      expect(memo.openCount, 1);
-      expect(memo.declineCount, 0);
+      // 答えるのにかけた時間は待機に数えない。
+      expect(
+        container.read(memoProvider(id))!.lockStateAt(clock.now()),
+        const MemoWaiting(remaining: Duration(minutes: 1)),
+      );
+
+      clock.advance(const Duration(minutes: 1));
+      expect(
+        container.read(memoProvider(id))!.lockStateAt(clock.now()).canRead,
+        isTrue,
+      );
     });
 
     test('「いいえ」なら開かず、待ち直しになる', () async {
       final id = await addQuestionMemo();
       await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 1));
 
       await notifier().declineAnswers(id);
 
@@ -250,18 +246,6 @@ void main() {
       expect(memo.lockStateAt(clock.now()), const MemoLocked());
       expect(memo.declineCount, 1);
       expect(memo.openCount, 0);
-    });
-
-    test('待機中は答えを受け付けない', () async {
-      final id = await addQuestionMemo();
-      await notifier().startWaiting(id);
-
-      await notifier().acceptAnswers(id);
-
-      expect(
-        container.read(memoProvider(id))!.lockStateAt(clock.now()).canRead,
-        isFalse,
-      );
     });
 
     test('解錠のしかたは解錠中だけ直せる', () async {
@@ -279,8 +263,9 @@ void main() {
       );
 
       await notifier().startWaiting(id);
-      clock.advance(const Duration(minutes: 1));
       await notifier().acceptAnswers(id);
+      clock.advance(const Duration(minutes: 1));
+      await notifier().settleUnlock(id);
 
       expect(
         await notifier().edit(

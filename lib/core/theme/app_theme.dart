@@ -143,8 +143,15 @@ abstract final class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: colorScheme.surfaceContainer,
+        selectedColor: colorScheme.primaryContainer,
+        checkmarkColor: colorScheme.onPrimaryContainer,
         side: BorderSide.none,
+        showCheckmark: true,
         labelStyle: textTheme.labelLarge,
+        secondaryLabelStyle: textTheme.labelLarge?.copyWith(
+          color: colorScheme.onPrimaryContainer,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(_radius)),
         ),

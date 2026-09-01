@@ -223,8 +223,7 @@ class _MemoCard extends ConsumerWidget {
             ? l10n.stateWaiting
             : l10n.waitingRemaining(formatRemaining(l10n, remaining)),
         MemoAwaitingAnswers() => l10n.stateAwaitingAnswers,
-        MemoUnlocked(:final remaining) =>
-          l10n.unlockedRemaining(formatRemaining(l10n, remaining)),
+        MemoUnlocked() => l10n.unlockedNotice,
       };
 
   String _lockedDetail(AppLocalizations l10n) {

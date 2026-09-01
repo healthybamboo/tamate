@@ -7,7 +7,8 @@ void main() {
     const rule = WaitDurationUnlockRule(Duration(minutes: 10));
 
     test('待機中は残り時間を返す', () {
-      final progress = rule.progressFor(const Duration(minutes: 4));
+      final progress = rule.progressFor(
+          elapsed: const Duration(minutes: 4), answered: false);
 
       expect(progress, isA<UnlockPending>());
       expect(
@@ -17,7 +18,8 @@ void main() {
     });
 
     test('待機時間ちょうどで解錠になる', () {
-      final progress = rule.progressFor(const Duration(minutes: 10));
+      final progress = rule.progressFor(
+          elapsed: const Duration(minutes: 10), answered: false);
 
       expect(progress, isA<UnlockSatisfied>());
     });
@@ -55,7 +57,8 @@ void main() {
     const rule = QuestionUnlockRule(['後悔しませんか', '本当にそうですか']);
 
     test('時間では満たされず、問いを返す', () {
-      final progress = rule.progressFor(const Duration(days: 1));
+      final progress =
+          rule.progressFor(elapsed: const Duration(days: 1), answered: false);
 
       expect(progress, isA<UnlockNeedsAnswers>());
       expect(
@@ -63,6 +66,13 @@ void main() {
         ['後悔しませんか', '本当にそうですか'],
       );
       expect(rule.expectedWait, isNull);
+    });
+
+    test('答え終えていれば満たされる', () {
+      expect(
+        rule.progressFor(elapsed: Duration.zero, answered: true),
+        isA<UnlockSatisfied>(),
+      );
     });
 
     test('JSON を往復できる', () {
@@ -82,21 +92,27 @@ void main() {
 
   group('AllOfUnlockRule', () {
     const rule = AllOfUnlockRule([
-      WaitDurationUnlockRule(Duration(minutes: 3)),
       QuestionUnlockRule(['後悔しませんか']),
+      WaitDurationUnlockRule(Duration(minutes: 3)),
     ]);
 
-    test('待機が終わるまでは待機の状態を返す', () {
-      final progress = rule.progressFor(const Duration(minutes: 1));
+    test('答えるまでは問いを返す', () {
+      final progress = rule.progressFor(
+        elapsed: const Duration(minutes: 5),
+        answered: false,
+      );
+
+      expect(progress, isA<UnlockNeedsAnswers>());
+    });
+
+    test('答えたあとは待機の状態を返す', () {
+      final progress = rule.progressFor(
+        elapsed: const Duration(minutes: 1),
+        answered: true,
+      );
 
       expect(progress, isA<UnlockPending>());
       expect((progress as UnlockPending).remaining, const Duration(minutes: 2));
-    });
-
-    test('待機が明けたら問いに移る', () {
-      final progress = rule.progressFor(const Duration(minutes: 3));
-
-      expect(progress, isA<UnlockNeedsAnswers>());
     });
 
     test('待機時間と問いをまとめて答えられる', () {

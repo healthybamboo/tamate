@@ -47,15 +47,6 @@
       }
     }
   },
-  "unlockedRemaining": "あと{remaining}読めます",
-  "@unlockedRemaining": {
-    "placeholders": {
-      "remaining": {
-        "type": "String"
-      }
-    }
-  },
-  "unlockedRelockNotice": "閉じたあとに読み直すには、また待つことになります",
   "memoWaitDurationLabel": "待機時間",
   "memoWaitDurationHelper": "解錠中なら後から変えられます",
   "memoBodyLockedLabel": "解錠中のみ編集できます",
@@ -239,5 +230,6 @@
       }
     }
   },
-  "summarySeparator": "・"
+  "summarySeparator": "・",
+  "unlockedNotice": "この画面を開いている間だけ読めます"
 }
