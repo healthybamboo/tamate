@@ -8,6 +8,7 @@ import '../domain/generated_code.dart';
 import '../domain/unlock_policy.dart';
 import '../domain/unlock_rule.dart';
 import 'duration_format.dart';
+import 'question_field.dart';
 
 /// メモの新規作成 / 編集画面。
 ///
@@ -25,13 +26,23 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _bodyController;
 
+  /// 新規作成時に選んでいる解錠のしかた。作成後は変更できない。
+  UnlockKind _kind = UnlockKind.wait;
+
   /// 新規作成時に選んでいる待機時間。作成後は変更できない。
   Duration _waitDuration = UnlockPolicy.defaultWait;
+
+  /// 登録する問い。問いだけは解錠中なら後からも直せる。
+  late List<String> _questions;
 
   /// 生成した4桁のコードを本文に入れたか。保存すると読めなくなる。
   bool _generatedCode = false;
 
   bool get _isNew => widget.memoId == null;
+
+  /// 問いの編集欄を出すか。
+  bool get _showQuestions =>
+      _isNew ? _kind.hasQuestions : _questions.isNotEmpty;
 
   @override
   void initState() {
@@ -39,6 +50,7 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     final memo = _isNew ? null : ref.read(memoProvider(widget.memoId!));
     _titleController = TextEditingController(text: memo?.title ?? '');
     _bodyController = TextEditingController(text: memo?.body ?? '');
+    _questions = [...?memo?.unlockRule.questions];
   }
 
   @override
@@ -54,11 +66,21 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     final title = _titleController.text;
     final body = _bodyController.text;
 
+    final questions = [
+      for (final question in _questions)
+        if (question.trim().isNotEmpty) question.trim(),
+    ];
+
+    if (_kind.hasQuestions && questions.isEmpty && _isNew) {
+      _notify(l10n.questionsRequired);
+      return;
+    }
+
     if (_isNew) {
       await notifier.add(
         title: title,
         body: body,
-        unlockRule: WaitDurationUnlockRule(_waitDuration),
+        unlockRule: _buildRule(questions),
       );
     } else {
       final saved = await notifier.edit(
@@ -71,8 +93,28 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
         _leave(message: l10n.editRejectedRelocked);
         return;
       }
+      if (_showQuestions) {
+        // 問いは育てていくものなので、解錠中なら直せる。
+        await notifier.editQuestions(widget.memoId!, questions);
+      }
     }
     _leave();
+  }
+
+  /// 選んだ解錠のしかたから解錠ルールを組み立てる。
+  UnlockRule _buildRule(List<String> questions) {
+    final wait = WaitDurationUnlockRule(_waitDuration);
+    return switch (_kind) {
+      UnlockKind.wait => wait,
+      UnlockKind.question => QuestionUnlockRule(questions),
+      UnlockKind.waitAndQuestion =>
+        AllOfUnlockRule([wait, QuestionUnlockRule(questions)]),
+    };
+  }
+
+  void _notify(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 画面を閉じる。[message] があればスナックバーで知らせる。
@@ -123,60 +165,125 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _titleController,
-                decoration: InputDecoration(labelText: l10n.memoTitleLabel),
-                textInputAction: TextInputAction.next,
+          children: [
+            TextField(
+              controller: _titleController,
+              decoration: InputDecoration(labelText: l10n.memoTitleLabel),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 16),
+            if (_isNew) ...[
+              _UnlockKindField(
+                value: _kind,
+                onChanged: (value) => setState(() => _kind = value),
               ),
               const SizedBox(height: 16),
-              if (_isNew) ...[
+              if (_kind.hasWait) ...[
                 _WaitDurationField(
                   value: _waitDuration,
                   onChanged: (value) => setState(() => _waitDuration = value),
                 ),
                 const SizedBox(height: 16),
               ],
-              if (_isNew) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _generateCode,
-                    icon: const Icon(Icons.pin_outlined),
-                    label: Text(l10n.generateCodeAction),
-                  ),
-                ),
-                if (_generatedCode)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      l10n.generateCodeNotice,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                const SizedBox(height: 16),
-              ],
-              Expanded(
-                child: TextField(
-                  controller: _bodyController,
-                  decoration: InputDecoration(
-                    labelText: l10n.memoBodyLabel,
-                    alignLabelWithHint: true,
-                  ),
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  keyboardType: TextInputType.multiline,
+            ],
+            if (_showQuestions) ...[
+              QuestionField(
+                questions: _questions,
+                onChanged: (value) => setState(() => _questions = value),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (_isNew) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _generateCode,
+                  icon: const Icon(Icons.pin_outlined),
+                  label: Text(l10n.generateCodeAction),
                 ),
               ),
+              if (_generatedCode)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    l10n.generateCodeNotice,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              const SizedBox(height: 16),
             ],
-          ),
+            TextField(
+              controller: _bodyController,
+              decoration: InputDecoration(
+                labelText: l10n.memoBodyLabel,
+                alignLabelWithHint: true,
+              ),
+              // 項目が増えても画面ごとスクロールできるので、本文は伸び縮みさせる。
+              minLines: 8,
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// 解錠のしかた。作成時に選び、あとから変えられない。
+enum UnlockKind {
+  wait(hasWait: true, hasQuestions: false),
+  waitAndQuestion(hasWait: true, hasQuestions: true),
+  question(hasWait: false, hasQuestions: true);
+
+  const UnlockKind({required this.hasWait, required this.hasQuestions});
+
+  final bool hasWait;
+  final bool hasQuestions;
+}
+
+/// 解錠のしかたの選択。
+class _UnlockKindField extends StatelessWidget {
+  const _UnlockKindField({required this.value, required this.onChanged});
+
+  final UnlockKind value;
+  final ValueChanged<UnlockKind> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(l10n.unlockKindLabel, style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<UnlockKind>(
+            segments: [
+              ButtonSegment(
+                value: UnlockKind.wait,
+                label: Text(l10n.unlockKindWait),
+              ),
+              ButtonSegment(
+                value: UnlockKind.waitAndQuestion,
+                label: Text(l10n.unlockKindWaitAndQuestion),
+              ),
+              ButtonSegment(
+                value: UnlockKind.question,
+                label: Text(l10n.unlockKindQuestion),
+              ),
+            ],
+            selected: {value},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => onChanged(selection.first),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import '../../../core/clock/clock.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../data/memo_repository.dart';
 import '../domain/memo.dart';
+import '../domain/memo_lock_state.dart';
 import '../domain/unlock_policy.dart';
 import '../domain/unlock_rule.dart';
 
@@ -157,6 +158,52 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.cancelWaiting() : e).toList(),
     );
+  }
+
+  /// 問いにすべて「はい」で答えたときに呼ぶ。解錠して記録を残す。
+  Future<void> acceptAnswers(String id) async {
+    final now = _now;
+    final memo = _find(id);
+    if (memo == null || memo.lockStateAt(now) is! MemoAwaitingAnswers) {
+      return;
+    }
+
+    await _notifications.cancelUnlock(id);
+    await _mutate(
+      (memos) =>
+          memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
+    );
+  }
+
+  /// 問いに「いいえ」と答えたときに呼ぶ。開かずにロック中へ戻す。
+  ///
+  /// 待機の経過も捨てる。答えを撤回して押し直す余地を残さないため。
+  Future<void> declineAnswers(String id) async {
+    final now = _now;
+    final memo = _find(id);
+    if (memo == null || memo.lockStateAt(now) is! MemoAwaitingAnswers) {
+      return;
+    }
+
+    await _notifications.cancelUnlock(id);
+    await _mutate(
+      (memos) => memos.map((e) => e.id == id ? e.decline(now) : e).toList(),
+    );
+  }
+
+  /// 問いを差し替える。解錠中のメモだけが対象。
+  Future<bool> editQuestions(String id, List<String> questions) async {
+    final memo = _find(id);
+    if (memo == null || !memo.lockStateAt(_now).canRead) {
+      return false;
+    }
+
+    await _mutate(
+      (memos) => memos
+          .map((e) => e.id == id ? e.withQuestions(questions) : e)
+          .toList(),
+    );
+    return true;
   }
 
   /// 待機時間を1段階のばす。いちばん長いものなら何もせず null を返す。

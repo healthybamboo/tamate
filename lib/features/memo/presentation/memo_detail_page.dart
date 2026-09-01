@@ -15,6 +15,7 @@ import '../domain/unlock_policy.dart';
 import 'duration_format.dart';
 import 'memo_display.dart';
 import 'open_history_chart.dart';
+import 'question_view.dart';
 
 /// メモを開く画面。
 ///
@@ -137,6 +138,11 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
                     now: now,
                     onStopWaiting: _stopWaiting,
                   ),
+                MemoAwaitingAnswers(:final questions) => QuestionView(
+                    questions: questions,
+                    onAccepted: _acceptAnswers,
+                    onDeclined: _declineAnswers,
+                  ),
                 MemoUnlocked(:final remaining) => _UnlockedView(
                     memo: memo,
                     remaining: remaining,
@@ -209,6 +215,24 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
         ),
       ),
     );
+  }
+
+  /// すべての問いに「はい」で答えたとき。
+  Future<void> _acceptAnswers() async {
+    _settled = true;
+    await _notifier.acceptAnswers(widget.memoId);
+  }
+
+  /// 問いに「いいえ」と答えたとき。開かずに閉じる。
+  Future<void> _declineAnswers() async {
+    final l10n = AppLocalizations.of(context);
+    await _notifier.declineAnswers(widget.memoId);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(l10n.declinedNotice)));
+    context.go(AppRoutes.memoList);
   }
 
   Future<void> _stopWaiting() async {
@@ -566,7 +590,12 @@ class _OpenHistory extends StatelessWidget {
           ExpansionTile(
             leading: const Icon(Icons.history),
             title: Text(l10n.openHistoryTitle),
-            subtitle: Text(l10n.openCountLabel(memo.openCount)),
+            subtitle: Text(
+              memo.declineCount == 0
+                  ? l10n.openCountLabel(memo.openCount)
+                  : '${l10n.openCountLabel(memo.openCount)}'
+                      '  ${l10n.declineCountLabel(memo.declineCount)}',
+            ),
             children: [
               if (history.isEmpty)
                 ListTile(

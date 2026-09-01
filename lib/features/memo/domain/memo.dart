@@ -22,6 +22,7 @@ class Memo {
     this.wait,
     this.unlockedAt,
     this.openedAt = const [],
+    this.declinedAt = const [],
   });
 
   /// 保存データからメモを復元する。
@@ -44,6 +45,7 @@ class Memo {
       wait: wait is Map<String, dynamic> ? MemoWait.fromJson(wait) : null,
       unlockedAt: _parseDate(unlockedAt),
       openedAt: _parseDates(json['openedAt']),
+      declinedAt: _parseDates(json['declinedAt']),
     );
   }
 
@@ -70,6 +72,12 @@ class Memo {
   /// これまでに開いた回数。
   int get openCount => openedAt.length;
 
+  /// 問いに「いいえ」と答えて引き返した時刻の履歴。古い順。
+  final List<DateTime> declinedAt;
+
+  /// これまでに引き返した回数。
+  int get declineCount => declinedAt.length;
+
   /// 解錠を検知した時刻。閲覧可能時間の起点。
   ///
   /// 解錠時刻が事前に分かるルールでは [UnlockRule.unlockAt] から導出できるため、
@@ -88,7 +96,8 @@ class Memo {
     return switch (progress) {
       UnlockPending(:final remaining) =>
         remaining == null ? null : now.add(remaining),
-      UnlockSatisfied() => now,
+      // 問いに答えるのは待機のあと。知らせる時刻としては待機が明けた今でよい。
+      UnlockNeedsAnswers() || UnlockSatisfied() => now,
     };
   }
 
@@ -108,6 +117,8 @@ class Memo {
     switch (unlockRule.progressFor(current.elapsedAt(now))) {
       case UnlockPending(:final remaining):
         return MemoWaiting(remaining: remaining, running: current.isRunning);
+      case UnlockNeedsAnswers(:final questions):
+        return MemoAwaitingAnswers(questions: questions);
       case UnlockSatisfied():
         // 待機が終わった瞬間は画面を見ているはずなので、そのまま解錠にする。
         return _readableStateAt(openedAt: unlockedAt ?? now, now: now);
@@ -137,6 +148,7 @@ class Memo {
         unlockRule: unlockRule,
         wait: MemoWait.startedAt(now),
         openedAt: openedAt,
+        declinedAt: declinedAt,
       );
 
   /// 待機の計測を再開した状態。待機画面に戻ってきたときに使う。
@@ -166,6 +178,35 @@ class Memo {
         updatedAt: updatedAt,
         unlockRule: unlockRule,
         openedAt: openedAt,
+        declinedAt: declinedAt,
+      );
+
+  /// 問いに「いいえ」と答えて引き返した状態。
+  ///
+  /// 待機の経過も捨てる。答えを撤回して押し直す余地を残さないため。
+  Memo decline(DateTime at) => Memo(
+        id: id,
+        title: title,
+        body: body,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        unlockRule: unlockRule,
+        openedAt: openedAt,
+        declinedAt: [...declinedAt, at],
+      );
+
+  /// 問いを差し替えた状態。問いは解錠中なら育てていける。
+  Memo withQuestions(List<String> questions) => Memo(
+        id: id,
+        title: title,
+        body: body,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        unlockRule: unlockRule.withQuestions(questions),
+        wait: wait,
+        unlockedAt: unlockedAt,
+        openedAt: openedAt,
+        declinedAt: declinedAt,
       );
 
   /// 解錠を検知した時刻を記録した状態。開封の履歴にも1件残す。
@@ -180,6 +221,7 @@ class Memo {
         unlockRule: unlockRule,
         unlockedAt: at,
         openedAt: [...openedAt, at],
+        declinedAt: declinedAt,
       );
 
   Memo _withWait(MemoWait wait) => Memo(
@@ -207,6 +249,7 @@ class Memo {
         wait: wait,
         unlockedAt: unlockedAt,
         openedAt: openedAt,
+        declinedAt: declinedAt,
       );
 
   /// 本文まわりだけを書き換えた状態。解錠の状態は引き継ぐ。
@@ -225,6 +268,7 @@ class Memo {
         wait: wait,
         unlockedAt: unlockedAt,
         openedAt: openedAt,
+        declinedAt: declinedAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -238,6 +282,9 @@ class Memo {
         'unlockedAt': unlockedAt?.toUtc().toIso8601String(),
         'openedAt': [
           for (final at in openedAt) at.toUtc().toIso8601String(),
+        ],
+        'declinedAt': [
+          for (final at in declinedAt) at.toUtc().toIso8601String(),
         ],
       };
 
@@ -272,7 +319,8 @@ class Memo {
           other.unlockRule == unlockRule &&
           other.wait == wait &&
           other.unlockedAt == unlockedAt &&
-          _sameDates(other.openedAt, openedAt);
+          _sameDates(other.openedAt, openedAt) &&
+          _sameDates(other.declinedAt, declinedAt);
 
   static bool _sameDates(List<DateTime> a, List<DateTime> b) {
     if (a.length != b.length) {
@@ -297,5 +345,6 @@ class Memo {
         wait,
         unlockedAt,
         Object.hashAll(openedAt),
+        Object.hashAll(declinedAt),
       );
 }

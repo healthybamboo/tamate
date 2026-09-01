@@ -50,4 +50,86 @@ void main() {
       expect(restored.expectedWait, UnlockPolicy.defaultWait);
     });
   });
+
+  group('QuestionUnlockRule', () {
+    const rule = QuestionUnlockRule(['後悔しませんか', '本当にそうですか']);
+
+    test('時間では満たされず、問いを返す', () {
+      final progress = rule.progressFor(const Duration(days: 1));
+
+      expect(progress, isA<UnlockNeedsAnswers>());
+      expect(
+        (progress as UnlockNeedsAnswers).questions,
+        ['後悔しませんか', '本当にそうですか'],
+      );
+      expect(rule.expectedWait, isNull);
+    });
+
+    test('問いを差し替えられる', () {
+      final edited = rule.withQuestions(['増やした問い']);
+
+      expect(edited.questions, ['増やした問い']);
+    });
+
+    test('JSON を往復できる', () {
+      expect(UnlockRule.fromJson(rule.toJson()), rule);
+    });
+
+    test('問いが空なら既定のルールとして読む', () {
+      // 問いが無いと永久に開けないメモになってしまう。
+      final restored = UnlockRule.fromJson({
+        'type': QuestionUnlockRule.typeName,
+        'questions': <dynamic>['  '],
+      });
+
+      expect(restored, UnlockRule.fallback);
+    });
+  });
+
+  group('AllOfUnlockRule', () {
+    const rule = AllOfUnlockRule([
+      WaitDurationUnlockRule(Duration(minutes: 3)),
+      QuestionUnlockRule(['後悔しませんか']),
+    ]);
+
+    test('待機が終わるまでは待機の状態を返す', () {
+      final progress = rule.progressFor(const Duration(minutes: 1));
+
+      expect(progress, isA<UnlockPending>());
+      expect((progress as UnlockPending).remaining, const Duration(minutes: 2));
+    });
+
+    test('待機が明けたら問いに移る', () {
+      final progress = rule.progressFor(const Duration(minutes: 3));
+
+      expect(progress, isA<UnlockNeedsAnswers>());
+    });
+
+    test('待機時間と問いをまとめて答えられる', () {
+      expect(rule.expectedWait, const Duration(minutes: 3));
+      expect(rule.questions, ['後悔しませんか']);
+    });
+
+    test('待機時間と問いをそれぞれ差し替えられる', () {
+      final edited = rule
+          .withWaitDuration(const Duration(minutes: 10))
+          .withQuestions(['別の問い']);
+
+      expect(edited.expectedWait, const Duration(minutes: 10));
+      expect(edited.questions, ['別の問い']);
+    });
+
+    test('JSON を往復できる', () {
+      expect(UnlockRule.fromJson(rule.toJson()), rule);
+    });
+
+    test('中身が無ければ既定のルールとして読む', () {
+      final restored = UnlockRule.fromJson({
+        'type': AllOfUnlockRule.typeName,
+        'rules': <dynamic>[],
+      });
+
+      expect(restored, UnlockRule.fallback);
+    });
+  });
 }
