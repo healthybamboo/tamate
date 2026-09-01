@@ -374,10 +374,13 @@ void main() {
     // 待たずに問いへ進む。本文はまだ出ない。
     expect(find.text('1 / 2'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
+    // 登録した順に出る。
+    expect(find.text('一年後の自分に、後悔はないですか'), findsOneWidget);
 
     await tester.tap(find.text('はい'));
     await tester.pumpAndSettle();
     expect(find.text('2 / 2'), findsOneWidget);
+    expect(find.text('目を瞑って、本当にそうか確かめましたか'), findsOneWidget);
 
     await tester.tap(find.text('はい'));
     await tester.pumpAndSettle();

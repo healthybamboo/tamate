@@ -1,12 +1,10 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 
 /// 問いに1問ずつ答えてもらう画面。
 ///
-/// 順番は出すたびに変える。同じ順で並ぶと、読まずに「はい」を押せてしまうため。
+/// 登録した順に出す。前の問いを受けて次の問いを置けるようにするため。
 /// すべてに「はい」で答えたときだけ [onAccepted] を呼ぶ。
 class QuestionView extends StatefulWidget {
   const QuestionView({
@@ -14,7 +12,6 @@ class QuestionView extends StatefulWidget {
     required this.questions,
     required this.onAccepted,
     required this.onDeclined,
-    this.random,
   });
 
   final List<String> questions;
@@ -25,18 +22,14 @@ class QuestionView extends StatefulWidget {
   /// ひとつでも「いいえ」と答えたとき。
   final VoidCallback onDeclined;
 
-  /// 並べ替えに使う乱数。テストから固定するために差し替えられる。
-  final Random? random;
-
   @override
   State<QuestionView> createState() => _QuestionViewState();
 }
 
 class _QuestionViewState extends State<QuestionView> {
-  late final List<String> _questions = [...widget.questions]
-    ..shuffle(widget.random);
-
   int _index = 0;
+
+  List<String> get _questions => widget.questions;
 
   void _answerYes() {
     if (_index + 1 >= _questions.length) {
