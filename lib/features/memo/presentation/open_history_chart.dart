@@ -86,7 +86,10 @@ class OpenHistoryChart extends StatelessWidget {
                         child: Text(
                           _dayLabel(day),
                           style: theme.textTheme.labelSmall,
-                          textAlign: TextAlign.center,
+                          // 1枠に収まらないので、右の空き枠へはみ出させる。
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.visible,
                         ),
                       ),
                   ],
