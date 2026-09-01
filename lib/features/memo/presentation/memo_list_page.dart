@@ -24,7 +24,26 @@ class MemoListPage extends ConsumerWidget {
     final memos = ref.watch(memoListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.memoListTitle)),
+      appBar: AppBar(
+        toolbarHeight: 72,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(l10n.memoListTitle),
+            if (_summary(l10n, memos.valueOrNull, ref) case final summary?)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  summary,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+          ],
+        ),
+      ),
       body: memos.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text(l10n.errorGeneric)),
@@ -45,6 +64,35 @@ class MemoListPage extends ConsumerWidget {
             ),
     );
   }
+}
+
+/// 見出しの下に出す一行。何件あって、いま何件読めるのかを見せる。
+///
+/// メモが無いときは空状態の案内があるので出さない。
+String? _summary(AppLocalizations l10n, List<Memo>? memos, WidgetRef ref) {
+  if (memos == null || memos.isEmpty) {
+    return null;
+  }
+
+  final now = ref.read(clockProvider).now();
+  var readable = 0;
+  var waiting = 0;
+  for (final memo in memos) {
+    switch (memo.lockStateAt(now)) {
+      case MemoUnlocked():
+        readable++;
+      case MemoWaiting() || MemoAwaitingAnswers():
+        waiting++;
+      case MemoLocked():
+        break;
+    }
+  }
+
+  return [
+    l10n.memoListSummaryTotal(memos.length),
+    if (readable > 0) l10n.memoListSummaryReadable(readable),
+    if (waiting > 0) l10n.memoListSummaryWaiting(waiting),
+  ].join(l10n.summarySeparator);
 }
 
 /// メモがまだ1件も無いとき。作るところまで案内する。

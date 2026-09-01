@@ -224,5 +224,30 @@
         "type": "String"
       }
     }
-  }
+  },
+  "memoListSummaryTotal": "{count}件",
+  "@memoListSummaryTotal": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "memoListSummaryReadable": "{count}件が読める",
+  "@memoListSummaryReadable": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "memoListSummaryWaiting": "{count}件が待機中",
+  "@memoListSummaryWaiting": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "summarySeparator": "・"
 }

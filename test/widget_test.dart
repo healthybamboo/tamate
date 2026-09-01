@@ -88,6 +88,8 @@ void main() {
     expect(find.text('秘密'), findsOneWidget);
     expect(find.text('ロック中'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
+    // 見出しの下に、何件あって何が起きているかを出す。
+    expect(find.text('1件'), findsOneWidget);
   });
 
   testWidgets('開くと待機画面になり、待機中も本文は出ない', (tester) async {

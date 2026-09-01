@@ -79,5 +79,9 @@
   "actionCreateMemo": "Write a memo",
   "lockedWaitSummary": "{duration} wait",
   "lockedQuestionSummary": "Answer the questions",
-  "lockedWaitAndQuestionSummary": "{duration} wait, then questions"
+  "lockedWaitAndQuestionSummary": "{duration} wait, then questions",
+  "memoListSummaryTotal": "{count, plural, =1{1 memo} other{{count} memos}}",
+  "memoListSummaryReadable": "{count} readable",
+  "memoListSummaryWaiting": "{count} waiting",
+  "summarySeparator": " · "
 }
