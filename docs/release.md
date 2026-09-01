@@ -109,6 +109,43 @@ Codemagic、その間をつなぐのが「リリース用のプルリクエス�
 
 - `release/ios`（Android も出すなら `release/android`）ブランチを作っておく。PR の宛先になる
 - ラベル `リリース` / `ios` / `android` を作っておく（PR に付ける）
+- ワークフローが `main` に push できるようにする（次の項）
+
+#### push が弾かれるとき
+
+`main` のルールセットで PR 必須にしてあると、バージョン更新の push が落ちる。
+
+```
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: - Changes must be made through a pull request.
+```
+
+ルールは残したまま、ワークフローだけ bypass に入れる。どちらか一方をやればよい。
+
+**A. GitHub App を使う（おすすめ）**
+
+PR 作成の制限も一緒に外れる。作った App だけが bypass できるので、範囲も狭い。
+
+1. Settings → Developer settings → GitHub Apps → New GitHub App
+   - Repository permissions: Contents `Read and write` / Pull requests `Read and write`
+   - Webhook は不要（Active のチェックを外す）
+2. Generate a private key で `.pem` を落とす。App ID も控える
+3. Install App でこのリポジトリに入れる
+4. リポジトリの Settings → Secrets and variables → Actions に登録する
+   - `RELEASE_APP_ID`: App ID
+   - `RELEASE_APP_PRIVATE_KEY`: `.pem` の中身をそのまま（`-----BEGIN` の行から全部）
+5. Settings → Rules → Rulesets → `main` → Bypass list に、この App を追加する
+
+`RELEASE_APP_ID` が入っていれば、ワークフローは自動でこのトークンに切り替わる。
+
+**B. GitHub Actions をそのまま bypass に入れる**
+
+Secrets は要らないが、Actions 全体が `main` に push できるようになる。
+
+1. Settings → Rules → Rulesets → `main` → Bypass list に **GitHub Actions** を追加する
+2. Settings → Actions → General → Workflow permissions で
+   **Allow GitHub Actions to create and approve pull requests** を有効にする
+   （リリース用の PR を作るのに要る。今は無効なので、A を選ばないならここも直す）
 
 **Apple 側**
 

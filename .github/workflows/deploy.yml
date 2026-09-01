@@ -31,6 +31,9 @@ run-name: Release by @${{ github.actor }}
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   GITHUB_ACTOR: ${{ github.actor }}
+  # リリース用 GitHub App の ID。入っていればそのトークンで push と PR 作成をする。
+  # 空なら GITHUB_TOKEN で動く。詳細は docs/release.md の「push が弾かれるとき」。
+  RELEASE_APP_ID: ${{ secrets.RELEASE_APP_ID }}
 
 jobs:
   # 静的解析とテストが通ることを確かめる。
@@ -46,11 +49,24 @@ jobs:
     outputs:
       release_version: ${{ steps.prepare_output.outputs.release_version }}
     steps:
+      # main はルールセットで直接の push を止めてある。素の GITHUB_TOKEN では
+      # 弾かれる（GH013）ので、bypass に入れた GitHub App のトークンで押し込む。
+      # App を登録していなければこの手順は飛ばし、GITHUB_TOKEN のまま進む。
+      - name: Generate a token
+        id: app_token
+        if: env.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
+          # 以降の push はこのトークンの持ち主として行われる。
+          token: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
 
       # 種類か、直接指定された値からバージョンを決める。
       - name: Get release version
@@ -106,11 +122,24 @@ jobs:
     if: ${{ github.event.inputs.ios_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
+      # PR は App の名前で作る。GITHUB_TOKEN で PR を作れるかは設定次第なので、
+      # App を登録してあるならそちらを使う。無ければ GITHUB_TOKEN のまま進む。
+      - name: Generate a token
+        id: app_token
+        if: env.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
 
       # release_version, assignee, reviewer, platform の順で渡す。
       - name: Create Release Pull Request
+        env:
+          # GITHUB_TOKEN では PR を作れない設定のこともあるので、App があればそちらで。
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
         run: |
           ./.github/shell/release_pr ${{ needs.prepare_release.outputs.release_version }} \
                                      ${{ github.actor }} \
@@ -123,10 +152,22 @@ jobs:
     if: ${{ github.event.inputs.android_release == 'true' }}
     runs-on: ubuntu-latest
     steps:
+      # PR は App の名前で作る。GITHUB_TOKEN で PR を作れるかは設定次第なので、
+      # App を登録してあるならそちらを使う。無ければ GITHUB_TOKEN のまま進む。
+      - name: Generate a token
+        id: app_token
+        if: env.RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Create Release Pull Request
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
         run: |
           ./.github/shell/release_pr ${{ needs.prepare_release.outputs.release_version }} \
                                      ${{ github.actor }} \
