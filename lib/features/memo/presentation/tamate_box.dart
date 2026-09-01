@@ -136,7 +136,25 @@ class _TamateSeaState extends State<TamateSea>
   late final AnimationController _waves = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 7),
-  )..repeat();
+  );
+
+  /// 動かしてよい状況か。端末の「視差効果を減らす」とテストでは止める。
+  bool _animate = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animate = !MediaQuery.disableAnimationsOf(context);
+    if (animate == _animate && _waves.isAnimating == animate) {
+      return;
+    }
+    _animate = animate;
+    if (animate) {
+      _waves.repeat();
+    } else {
+      _waves.stop();
+    }
+  }
 
   @override
   void dispose() {
@@ -148,16 +166,23 @@ class _TamateSeaState extends State<TamateSea>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return AnimatedBuilder(
-      animation: _waves,
-      builder: (context, _) => CustomPaint(
-        size: Size(double.infinity, widget.height),
-        painter: _TamateSeaPainter(
-          progress: widget.progress ?? 0,
-          phase: _waves.value,
-          box: scheme.primary,
-          water: scheme.primary,
-          surface: scheme.onSurface,
+    // 残り時間は1秒ごとにしか変わらないので、水位はその間を補間して上げる。
+    // 段で上がると、待っているあいだずっとカクついて見える。
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: widget.progress ?? 0, end: widget.progress ?? 0),
+      duration: _animate ? const Duration(seconds: 1) : Duration.zero,
+      curve: Curves.linear,
+      builder: (context, progress, _) => AnimatedBuilder(
+        animation: _waves,
+        builder: (context, _) => CustomPaint(
+          size: Size(double.infinity, widget.height),
+          painter: _TamateSeaPainter(
+            progress: progress,
+            phase: _waves.value,
+            box: scheme.primary,
+            water: scheme.primary,
+            surface: scheme.onSurface,
+          ),
         ),
       ),
     );
