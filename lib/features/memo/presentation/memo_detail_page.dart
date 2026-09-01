@@ -15,6 +15,7 @@ import 'duration_format.dart';
 import 'memo_display.dart';
 import 'open_history_chart.dart';
 import 'question_view.dart';
+import 'tamate_box.dart';
 
 /// メモを開く画面。
 ///
@@ -141,6 +142,7 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
                   _LockedView(memo: memo, onOpen: () => _open(memo)),
                 MemoWaiting(:final remaining) => _WaitingView(
                     remaining: remaining,
+                    total: memo.unlockRule.expectedWait,
                     now: now,
                     onStopWaiting: _stopWaiting,
                   ),
@@ -275,11 +277,7 @@ class _LockedView extends StatelessWidget {
 
     return _CenteredColumn(
       children: [
-        Icon(
-          Icons.lock_outline,
-          size: 64,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+        const TamateBox(size: 112, dimmed: true),
         const SizedBox(height: 24),
         Text(l10n.lockedBodyHidden, textAlign: TextAlign.center),
         if (wait != null) ...[
@@ -305,13 +303,28 @@ class _LockedView extends StatelessWidget {
 class _WaitingView extends StatelessWidget {
   const _WaitingView({
     required this.remaining,
+    required this.total,
     required this.now,
     required this.onStopWaiting,
   });
 
   final Duration? remaining;
+
+  /// 待機時間の全体。図の進み具合を出すのに使う。
+  final Duration? total;
+
   final DateTime now;
   final VoidCallback onStopWaiting;
+
+  /// 待った割合。時間で測れないルールでは null。
+  double? get _progress {
+    final left = remaining;
+    final whole = total;
+    if (left == null || whole == null || whole == Duration.zero) {
+      return null;
+    }
+    return 1 - left.inMilliseconds / whole.inMilliseconds;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -323,11 +336,7 @@ class _WaitingView extends StatelessWidget {
 
     return _CenteredColumn(
       children: [
-        Icon(
-          Icons.hourglass_bottom,
-          size: 64,
-          color: theme.colorScheme.primary,
-        ),
+        TamateBox(size: 132, progress: _progress),
         const SizedBox(height: 24),
         Text(l10n.stateWaiting, style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
@@ -393,11 +402,7 @@ class _UnlockedView extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Icon(
-                  Icons.lock_clock,
-                  size: 20,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
+                const TamateBox(size: 28, open: true),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

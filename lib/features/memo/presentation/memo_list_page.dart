@@ -10,6 +10,7 @@ import '../domain/memo.dart';
 import '../domain/memo_lock_state.dart';
 import 'duration_format.dart';
 import 'memo_display.dart';
+import 'tamate_box.dart';
 
 /// メモ一覧画面。
 ///
@@ -115,11 +116,7 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.lock_outline,
-              size: 56,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            const TamateBox(size: 108, dimmed: true),
             const SizedBox(height: 24),
             Text(l10n.memoListEmpty, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
