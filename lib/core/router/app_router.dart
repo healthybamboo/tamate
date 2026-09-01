@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/memo/presentation/memo_detail_page.dart';
 import '../../features/memo/presentation/memo_edit_page.dart';
 import '../../features/memo/presentation/memo_list_page.dart';
 
@@ -9,7 +10,10 @@ abstract final class AppRoutes {
   static const String memoList = '/';
   static const String memoNew = '/memos/new';
 
-  static String memoEdit(String id) => '/memos/$id';
+  /// メモを開く画面。ロック中・待機中・解錠中のどれになるかは状態次第。
+  static String memoDetail(String id) => '/memos/$id';
+
+  static String memoEdit(String id) => '/memos/$id/edit';
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -28,10 +32,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: 'memos/:id',
-            name: 'memoEdit',
-            builder: (context, state) => MemoEditPage(
-              memoId: state.pathParameters['id'],
+            name: 'memoDetail',
+            builder: (context, state) => MemoDetailPage(
+              memoId: state.pathParameters['id']!,
             ),
+            routes: [
+              GoRoute(
+                path: 'edit',
+                name: 'memoEdit',
+                builder: (context, state) => MemoEditPage(
+                  memoId: state.pathParameters['id'],
+                ),
+              ),
+            ],
           ),
         ],
       ),
