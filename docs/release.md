@@ -69,6 +69,113 @@ dart run flutter_native_splash:create       # スプラッシュを生成
 CocoaPods が壊れている場合は `brew upgrade cocoapods` で直る（Homebrew の ruby を上げたまま
 cocoapods を入れ直していないと、gem の解決に失敗する）。
 
+## リリースの流れ
+
+`wageria` と同じ形にしてある。バージョンを決めるのは GitHub Actions、ビルドと配信は
+Codemagic、その間をつなぐのが「リリース用のプルリクエスト」。
+
+```
+   main
+    │  Actions: Release を手動で実行（種類 major/minor/patch を選ぶ）
+    ├─ 解析とテスト
+    ├─ pubspec.yaml のバージョンとビルド番号を更新して push
+    ├─ タグ <version> を打つ / ドラフトのリリースノートを作る
+    ├─ release/<version> ブランチを作る
+    └─ release/<version> → release/ios へ PR を作る
+                            │  Codemagic が PR を見てビルド開始
+                            ├─ 解析・テスト・ipa
+                            ├─ TestFlight へ配信
+                            └─ 中身を確かめて PR をマージする
+```
+
+- **リリース用のブランチを分けている理由**: リリース中でも `main` にマージしてよくするため。
+  リリースは `release/<version>` の内容で固定される
+- **PR が1つだけである理由**: デプロイ用ブランチに複数の PR があると、どれをマージすべきか
+  分からなくなる。新しいリリースを作ると、古い PR は自動で閉じる
+- ビルド番号は Codemagic 側でも TestFlight の最新 + 1 を振るので、番号が重なることはない
+
+### 実行のしかた
+
+1. GitHub の Actions → **Release** → Run workflow
+2. `release_type` を選ぶ（バージョンを直接入れる場合は `release_version` に書く）
+3. iOS / Android のどちらを出すか選ぶ（Android は Codemagic 側の設定が済むまで off）
+4. しばらくすると `[リリース][ios] version: x.y.z` という PR ができる
+5. Codemagic のビルドが終わり、TestFlight に届いたのを確認したら PR をマージする
+6. ドラフトのリリースノートを整えて公開する
+
+### 一度だけやること
+
+**GitHub 側**
+
+- `release/ios`（Android も出すなら `release/android`）ブランチを作っておく。PR の宛先になる
+- ラベル `リリース` / `ios` / `android` を作っておく（PR に付ける）
+- ワークフローが `main` に push できるようにする（次の項）
+
+#### push が弾かれるとき
+
+`main` のルールセットで PR 必須にしてあると、バージョン更新の push が落ちる。
+
+```
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: - Changes must be made through a pull request.
+```
+
+ルールは残したまま、ワークフローだけ bypass に入れる。どちらか一方をやればよい。
+
+**A. GitHub App を使う（おすすめ）**
+
+PR 作成の制限も一緒に外れる。作った App だけが bypass できるので、範囲も狭い。
+
+1. Settings → Developer settings → GitHub Apps → New GitHub App
+   - Repository permissions: Contents `Read and write` / Pull requests `Read and write`
+   - Webhook は不要（Active のチェックを外す）
+2. Generate a private key で `.pem` を落とす。App ID も控える
+3. Install App でこのリポジトリに入れる
+4. リポジトリの Settings → Secrets and variables → Actions に登録する
+   - `RELEASE_APP_ID`: App ID
+   - `RELEASE_APP_PRIVATE_KEY`: `.pem` の中身をそのまま（`-----BEGIN` の行から全部）
+5. Settings → Rules → Rulesets → `main` → Bypass list に、この App を追加する
+
+`RELEASE_APP_ID` が入っていれば、ワークフローは自動でこのトークンに切り替わる。
+
+**B. GitHub Actions をそのまま bypass に入れる**
+
+Secrets は要らないが、Actions 全体が `main` に push できるようになる。
+
+1. Settings → Rules → Rulesets → `main` → Bypass list に **GitHub Actions** を追加する
+2. Settings → Actions → General → Workflow permissions で
+   **Allow GitHub Actions to create and approve pull requests** を有効にする
+   （リリース用の PR を作るのに要る。今は無効なので、A を選ばないならここも直す）
+
+**Apple 側**
+
+1. **Apple Developer Program に加入する**（年 99 USD）。これが無いと TestFlight に配れない
+2. **App Store Connect でアプリを登録する**
+   - プラットフォーム: iOS、Bundle ID: `net.bamgrove.tamate`、名前: `tamate`
+   - Bundle ID が Developer ポータルに無ければ、Certificates, Identifiers & Profiles で先に作る
+3. **App Store Connect API キーを作る**
+   - App Store Connect → Users and Access → Integrations → App Store Connect API
+   - アクセス権は「App Manager」。発行された `.p8` は一度しか落とせないので保管する
+
+**Codemagic 側**
+
+4. Teams → Integrations → App Store Connect に上のキーを追加する。
+   **名前は `tamate` にする**（`codemagic.yaml` がこの名前で参照している。変えるなら
+   `environment.integrations.app_store_connect` も直す）
+5. Applications からこのリポジトリを追加する。`codemagic.yaml` は自動で読まれる
+6. 署名は Codemagic に任せる（`ios_signing.distribution_type: app_store`）。証明書と
+   プロビジョニングプロファイルは API キー経由で取得・作成される。手元の鍵は要らない
+
+Android も出すなら、Google Play のサービスアカウント（`GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`）と
+アップロード鍵を Codemagic のグループ `google_play` / `tamate_upload` に入れる。
+
+### 注意
+
+- `flutter: 3.27.1` を Codemagic と GitHub Actions の両方で固定してある。上げるときは両方直す
+- 輸出コンプライアンスの質問を毎回出さないよう、`Info.plist` に
+  `ITSAppUsesNonExemptEncryption = false` を入れてある。通信は書体の取得（HTTPS）だけなので
+  この申告で足りる
+
 ## ストア提出物
 
 掲載文とプライバシーの回答は `docs/store.md` にまとめてある。

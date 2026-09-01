@@ -1,0 +1,56 @@
+#!/bin/bash
+# pubspec.yaml のバージョンを更新する。
+#
+# 表示用のバージョンは渡された値にし、ビルド番号（+ 以降）は1つ進める。
+# ストアはビルド番号の重複を受け付けないため、リリースのたびに必ず上げる。
+
+set -euo pipefail
+
+update_pubspec_version() {
+    local pubspec_file=$1
+    local version=$2
+
+    if [ ! -e "$pubspec_file" ]; then
+        echo "Error: $pubspec_file does not exist." 1>&2
+        exit 1
+    fi
+
+    local build_number
+    build_number=$(grep '^version:' "$pubspec_file" | awk -F'+' '{print $2}')
+    if [ -z "$build_number" ]; then
+        build_number=0
+    fi
+    ((build_number += 1))
+
+    # Mac と Linux で sed の -i の書き方が違うので、一時ファイルを経由する。
+    local tmp
+    tmp=$(mktemp)
+    sed "s/^version: .*/version: $version+$build_number/" "$pubspec_file" > "$tmp"
+    mv "$tmp" "$pubspec_file"
+
+    echo "$version+$build_number"
+}
+
+pubspec_file_path=""
+version=""
+while getopts "f:v:" opt; do
+    case ${opt} in
+    f)
+        pubspec_file_path=$OPTARG
+        ;;
+    v)
+        version=$OPTARG
+        ;;
+    *)
+        echo "Usage: $0 -f <pubspec_file_path> -v <version>" 1>&2
+        exit 1
+        ;;
+    esac
+done
+
+if [ -z "$pubspec_file_path" ] || [ -z "$version" ]; then
+    echo "Usage: $0 -f <pubspec_file_path> -v <version>" 1>&2
+    exit 1
+fi
+
+update_pubspec_version "$pubspec_file_path" "$version"
