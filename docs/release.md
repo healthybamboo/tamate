@@ -69,6 +69,45 @@ dart run flutter_native_splash:create       # スプラッシュを生成
 CocoaPods が壊れている場合は `brew upgrade cocoapods` で直る（Homebrew の ruby を上げたまま
 cocoapods を入れ直していないと、gem の解決に失敗する）。
 
+## Codemagic で TestFlight に配る
+
+`codemagic.yaml` の `ios-testflight` ワークフローが、解析 → テスト → ipa のビルド →
+TestFlight への配信までを通す。ビルド番号は TestFlight の最新の次を自動で振る。
+
+### 一度だけやること
+
+1. **Apple Developer Program に加入する**（年 99 USD）。これが無いと TestFlight に配れない
+2. **App Store Connect でアプリを登録する**
+   - プラットフォーム: iOS、Bundle ID: `net.bamgrove.tamate`、名前: `tamate`
+   - Bundle ID が Developer ポータルに無ければ、Certificates, Identifiers & Profiles で先に作る
+3. **App Store Connect API キーを作る**
+   - App Store Connect → Users and Access → Integrations → App Store Connect API
+   - アクセス権は「App Manager」。発行された `.p8` は一度しか落とせないので保管する
+   - 控えるもの: Issuer ID、Key ID、`.p8` ファイル
+4. **Codemagic に登録する**
+   - Codemagic → Teams → Integrations → App Store Connect に上のキーを追加する。
+     **名前は `tamate` にする**（`codemagic.yaml` がこの名前で参照している。変えるなら
+     `environment.integrations.app_store_connect` も直す）
+   - Applications からこのリポジトリを追加する。`codemagic.yaml` は自動で読まれる
+5. **署名**は Codemagic に任せる（`ios_signing.distribution_type: app_store`）。証明書と
+   プロビジョニングプロファイルは API キー経由で取得・作成される。手元の鍵は要らない
+
+### 毎回
+
+Codemagic で `iOS TestFlight` ワークフローを実行する（手動、またはブランチへの push を
+トリガーに設定する）。完了すると TestFlight にビルドが届き、結果がメールで飛ぶ。
+
+内部テスターへの配布は App Store Connect 側でグループに追加する。特定のグループへ自動で
+配りたい場合は `publishing.app_store_connect.beta_groups` にグループ名を足す。
+
+### 注意
+
+- `flutter: 3.27.1` と CI（`.github/workflows`）のバージョンを揃えてある。上げるときは両方直す
+- 輸出コンプライアンスの質問を毎回出さないよう、`Info.plist` に
+  `ITSAppUsesNonExemptEncryption = false` を入れてある。通信は書体の取得（HTTPS）だけなので
+  この申告で足りる
+- Android も同じ要領で `google_play` の publishing を足せる。今は iOS だけ
+
 ## ストア提出物
 
 掲載文とプライバシーの回答は `docs/store.md` にまとめてある。

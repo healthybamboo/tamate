@@ -1,0 +1,70 @@
+# Codemagic の設定。iOS を TestFlight に上げるところまで。
+#
+# 使う前に Codemagic 側で用意するものは docs/release.md の「Codemagic で TestFlight に配る」を参照。
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      flutter: 3.27.1
+      xcode: latest
+      cocoapods: default
+
+      # App Store Connect の API キー。Codemagic の Integrations で作った名前を書く。
+      integrations:
+        app_store_connect: tamate
+
+      # 署名は Codemagic に取りに行かせる。証明書もプロファイルも手元に置かない。
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: net.bamgrove.tamate
+
+      vars:
+        BUNDLE_ID: net.bamgrove.tamate
+
+    scripts:
+      - name: 依存を入れる
+        script: flutter pub get
+
+      - name: 静的解析
+        script: flutter analyze
+
+      - name: テスト
+        script: flutter test
+
+      - name: ビルド番号を決める
+        script: |
+          # TestFlight にある最新のビルド番号の次を使う。番号が重なると弾かれるため。
+          LATEST=$(app-store-connect get-latest-testflight-build-number \
+            --bundle-id "$BUNDLE_ID" 2>/dev/null || echo 0)
+          echo "BUILD_NUMBER=$((LATEST + 1))" >> "$CM_ENV"
+
+      - name: Pods を入れる
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
+      - name: ipa を作る
+        script: |
+          flutter build ipa --release \
+            --build-number="$BUILD_NUMBER" \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        # TestFlight まで。審査には出さない。
+        submit_to_testflight: true
+        submit_to_app_store: false
+
+      email:
+        recipients:
+          - takeru-sakuma@bamgrove.net
+        notify:
+          success: true
+          failure: true

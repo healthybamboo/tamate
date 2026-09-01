@@ -85,6 +85,7 @@ lib/
 
 - アイコンとスプラッシュは `tool/generate_app_icon.dart` で描き出している（素材を持ち込まない）
 - Android のリリース署名は `android/key.properties` があればそれを使う。鍵はリポジトリに含めない
+- TestFlight への配信は Codemagic で行う（`codemagic.yaml`）。必要な準備は release.md を参照
 - 残っているのは、実機での確認とストアへの提出（どちらも鍵とアカウントが要る）
 
 ## ライセンス
