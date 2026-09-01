@@ -42,7 +42,7 @@
   "durationHourMinute": "{hours}h {minutes}m",
   "durationMinuteSecond": "{minutes}m {seconds}s",
   "durationSecond": "{seconds}s",
-  "waitLengthDays": "{days} days",
-  "waitLengthHours": "{hours} hours",
-  "waitLengthMinutes": "{minutes} minutes"
+  "waitLengthDays": "{days, plural, =1{1 day} other{{days} days}}",
+  "waitLengthHours": "{hours, plural, =1{1 hour} other{{hours} hours}}",
+  "waitLengthMinutes": "{minutes, plural, =1{1 minute} other{{minutes} minutes}}"
 }
