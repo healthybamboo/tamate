@@ -58,20 +58,9 @@
   },
   "unlockedRelockNotice": "閉じたあとに読み直すには、また待つことになります",
   "memoWaitDurationLabel": "待機時間",
-  "memoWaitDurationHelper": "作成後は変更できません",
+  "memoWaitDurationHelper": "解錠中なら後から変えられます",
   "memoBodyLockedLabel": "解錠中のみ編集できます",
   "editRejectedRelocked": "再ロックされたため保存できませんでした",
-  "notificationChannelName": "解錠のお知らせ",
-  "notificationChannelDescription": "メモが読めるようになったことを知らせます",
-  "notificationUnlockedTitle": "メモが開けるようになりました",
-  "notificationUnlockedBody": "「{title}」を読めます",
-  "@notificationUnlockedBody": {
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
   "durationDayHour": "{days}日{hours}時間",
   "@durationDayHour": {
     "placeholders": {
@@ -216,5 +205,24 @@
   "questionsRequired": "問いを1つ以上書いてください",
   "questionSuggestion1": "今これを開いて、死ぬときに後悔しませんか",
   "questionSuggestion2": "一年後の自分に、後悔はないですか",
-  "questionSuggestion3": "目を瞑って、本当にそうか確かめましたか"
+  "questionSuggestion3": "目を瞑って、本当にそうか確かめましたか",
+  "memoListEmptyDescription": "ここに書いたメモは、待たないと読めなくなります",
+  "actionCreateMemo": "メモを作る",
+  "lockedWaitSummary": "{duration}待つ",
+  "@lockedWaitSummary": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "lockedQuestionSummary": "問いに答える",
+  "lockedWaitAndQuestionSummary": "{duration}待って、問いに答える",
+  "@lockedWaitAndQuestionSummary": {
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  }
 }

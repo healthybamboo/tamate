@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tamate/app.dart';
 import 'package:tamate/core/clock/clock.dart';
-import 'package:tamate/core/notifications/notification_service.dart';
 import 'package:tamate/features/memo/data/memo_repository.dart';
 import 'package:tamate/features/memo/domain/memo.dart';
 import 'package:tamate/features/memo/domain/unlock_rule.dart';
@@ -42,8 +41,6 @@ void main() {
           clockProvider.overrideWithValue(clock),
           // 本物は1秒ごとのタイマーで動くので、テストでは手で流す。
           nowProvider.overrideWith((ref) => ticks.stream),
-          notificationServiceProvider
-              .overrideWithValue(RecordingNotificationService()),
         ],
         child: const TamateApp(),
       ),
@@ -70,13 +67,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('起動するとメモ一覧が表示され、新規作成に遷移できる', (tester) async {
+  testWidgets('メモが無いときは、作るところまで案内する', (tester) async {
     await pumpApp(tester);
 
     expect(find.text('メモ'), findsOneWidget);
     expect(find.text('まだメモがありません'), findsOneWidget);
+    expect(find.text('ここに書いたメモは、待たないと読めなくなります'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(find.text('メモを作る'));
     await tester.pumpAndSettle();
 
     expect(find.text('新規メモ'), findsOneWidget);
@@ -417,5 +415,40 @@ void main() {
     expect(find.text('ロック中'), findsOneWidget);
     expect(find.text('ここは読めないはず'), findsNothing);
     expect(repository.memos.single.declineCount, 1);
+  });
+
+  testWidgets('解錠中なら、編集から待機時間も解錠のしかたも変えられる', (tester) async {
+    repository = InMemoryMemoRepository([
+      Memo(
+        id: 'open',
+        title: '開いているメモ',
+        body: '中身',
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
+        unlockRule: const WaitDurationUnlockRule(Duration(minutes: 1)),
+        unlockedAt: clock.now(),
+      ),
+    ]);
+
+    await pumpApp(tester);
+    await tester.tap(find.text('開いているメモ'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    // 今の設定が初期値として入っている。
+    expect(find.text('メモを編集'), findsOneWidget);
+    expect(find.text('待機時間'), findsOneWidget);
+
+    await tester.tap(find.text('10分'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(
+      repository.memos.single.unlockRule.expectedWait,
+      const Duration(minutes: 10),
+    );
   });
 }

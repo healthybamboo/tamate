@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/clock/clock.dart';
 import '../../../core/router/app_router.dart';
-import '../../../core/notifications/notification_service.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/memo_list_notifier.dart';
 import '../domain/memo.dart';
@@ -41,9 +40,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
   bool _foreground = true;
 
   late final AppLifecycleListener _lifecycleListener;
-
-  /// 直近のビルドで組み立てた通知の文面。再開時の予約に使う。
-  UnlockNotificationContent? _notification;
 
   /// 画面が捨てられたあとにも待機を止めるので、ここで掴んでおく。
   late final MemoListNotifier _notifier;
@@ -101,7 +97,6 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
     final now =
         memo.lockStateAt(clockNow) is MemoLocked ? clockNow : watchNow(ref);
     final lockState = memo.lockStateAt(now);
-    _notification = unlockNotificationContent(l10n, memo);
 
     if (lockState.canRead && memo.unlockedAt == null) {
       _settleUnlock();
@@ -178,26 +173,16 @@ class _MemoDetailPageState extends ConsumerState<MemoDetailPage> {
 
   /// 待機の再開。画面を見ている間だけ進む。
   void _resumeWaiting() {
-    final notification = _notification;
-    if (notification == null) {
-      return;
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _foreground) {
-        unawaited(
-          _notifier.resumeWaiting(widget.memoId, notification: notification),
-        );
+        unawaited(_notifier.resumeWaiting(widget.memoId));
       }
     });
   }
 
   Future<void> _open(Memo memo) async {
-    final l10n = AppLocalizations.of(context);
     _settled = false;
-    await _notifier.startWaiting(
-      memo.id,
-      notification: unlockNotificationContent(l10n, memo),
-    );
+    await _notifier.startWaiting(memo.id);
   }
 
   Future<void> _extendWait() async {

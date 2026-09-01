@@ -195,14 +195,14 @@ class Memo {
         declinedAt: [...declinedAt, at],
       );
 
-  /// 問いを差し替えた状態。問いは解錠中なら育てていける。
-  Memo withQuestions(List<String> questions) => Memo(
+  /// 解錠のしかたを差し替えた状態。解錠中のメモだけが対象。
+  Memo withUnlockRule(UnlockRule rule) => Memo(
         id: id,
         title: title,
         body: body,
         createdAt: createdAt,
         updatedAt: updatedAt,
-        unlockRule: unlockRule.withQuestions(questions),
+        unlockRule: rule,
         wait: wait,
         unlockedAt: unlockedAt,
         openedAt: openedAt,

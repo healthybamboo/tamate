@@ -30,13 +30,9 @@
   "unlockedRemaining": "Readable for {remaining}",
   "unlockedRelockNotice": "Reading it again later means waiting again",
   "memoWaitDurationLabel": "Wait time",
-  "memoWaitDurationHelper": "Cannot be changed after creation",
+  "memoWaitDurationHelper": "Can be changed later while unlocked",
   "memoBodyLockedLabel": "Editable only while unlocked",
   "editRejectedRelocked": "It locked again, so nothing was saved",
-  "notificationChannelName": "Unlock alerts",
-  "notificationChannelDescription": "Tells you when a memo becomes readable",
-  "notificationUnlockedTitle": "A memo is ready to open",
-  "notificationUnlockedBody": "You can read \"{title}\" now",
   "durationDayHour": "{days}d {hours}h",
   "durationHourMinute": "{hours}h {minutes}m",
   "durationMinuteSecond": "{minutes}m {seconds}s",
@@ -78,5 +74,10 @@
   "questionsRequired": "Write at least one question",
   "questionSuggestion1": "Opening this now — will you regret it when you die?",
   "questionSuggestion2": "Will you regret this a year from now?",
-  "questionSuggestion3": "Close your eyes. Did you really check?"
+  "questionSuggestion3": "Close your eyes. Did you really check?",
+  "memoListEmptyDescription": "Whatever you write here stays closed until you wait for it",
+  "actionCreateMemo": "Write a memo",
+  "lockedWaitSummary": "{duration} wait",
+  "lockedQuestionSummary": "Answer the questions",
+  "lockedWaitAndQuestionSummary": "{duration} wait, then questions"
 }

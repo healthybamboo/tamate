@@ -65,12 +65,6 @@ void main() {
       expect(rule.expectedWait, isNull);
     });
 
-    test('問いを差し替えられる', () {
-      final edited = rule.withQuestions(['増やした問い']);
-
-      expect(edited.questions, ['増やした問い']);
-    });
-
     test('JSON を往復できる', () {
       expect(UnlockRule.fromJson(rule.toJson()), rule);
     });
@@ -110,13 +104,11 @@ void main() {
       expect(rule.questions, ['後悔しませんか']);
     });
 
-    test('待機時間と問いをそれぞれ差し替えられる', () {
-      final edited = rule
-          .withWaitDuration(const Duration(minutes: 10))
-          .withQuestions(['別の問い']);
+    test('待機時間だけを差し替えられる', () {
+      final edited = rule.withWaitDuration(const Duration(minutes: 10));
 
       expect(edited.expectedWait, const Duration(minutes: 10));
-      expect(edited.questions, ['別の問い']);
+      expect(edited.questions, ['後悔しませんか']);
     });
 
     test('JSON を往復できる', () {

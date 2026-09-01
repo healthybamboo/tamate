@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/clock/clock.dart';
-import '../../../core/notifications/notification_service.dart';
 import '../data/memo_repository.dart';
 import '../domain/memo.dart';
 import '../domain/memo_lock_state.dart';
@@ -14,9 +13,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
   static const Uuid _uuid = Uuid();
 
   MemoRepository get _repository => ref.read(memoRepositoryProvider);
-
-  NotificationService get _notifications =>
-      ref.read(notificationServiceProvider);
 
   DateTime get _now => ref.read(clockProvider).now();
 
@@ -57,60 +53,52 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     await _mutate((memos) => [...memos, memo]);
   }
 
-  /// 本文を書き換える。解錠中でなければ何もせず false を返す。
+  /// 内容と解錠のしかたを書き換える。解錠中でなければ何もせず false を返す。
+  ///
+  /// 待機時間も問いも、解錠中なら変えられる。一度開くところまでは同じコストを
+  /// 払っているので、そこから先は育てていけるようにしておく。
   Future<bool> edit({
     required String id,
     required String title,
     required String body,
+    UnlockRule? unlockRule,
   }) async {
+    final now = _now;
     final memo = _find(id);
-    if (memo == null || !memo.lockStateAt(_now).canRead) {
+    if (memo == null || !memo.lockStateAt(now).canRead) {
       return false;
     }
 
     await _mutate(
-      (memos) => memos
-          .map(
-            (e) => e.id == id
-                ? e.copyWith(title: title, body: body, updatedAt: _now)
-                : e,
-          )
-          .toList(),
+      (memos) => memos.map((e) {
+        if (e.id != id) {
+          return e;
+        }
+        final edited = e.copyWith(title: title, body: body, updatedAt: now);
+        return unlockRule == null ? edited : edited.withUnlockRule(unlockRule);
+      }).toList(),
     );
     return true;
   }
 
   Future<void> delete(String id) async {
-    await _notifications.cancelUnlock(id);
     await _mutate((memos) => memos.where((memo) => memo.id != id).toList());
   }
 
-  /// 待機を始める。解錠予定時刻が分かるなら通知も予約する。
-  Future<void> startWaiting(
-    String id, {
-    required UnlockNotificationContent notification,
-  }) async {
+  /// 待機を始める。
+  Future<void> startWaiting(String id) async {
     final now = _now;
     await _mutate(
       (memos) =>
           memos.map((e) => e.id == id ? e.startWaiting(now) : e).toList(),
     );
-
-    // 待つメモだけが通知の対象。問いに答えるだけのメモで許可を求めても意味がない。
-    if (_find(id)?.unlockRule.expectedWait != null) {
-      await _notifications.requestPermission();
-      await _scheduleUnlock(id, notification);
-    }
   }
 
   /// 待機の計測を再開する。待機画面に戻ってきたときに呼ぶ。
-  Future<void> resumeWaiting(
-    String id, {
-    required UnlockNotificationContent notification,
-  }) async {
+  Future<void> resumeWaiting(String id) async {
     final now = _now;
     final memo = _find(id);
-    if (memo?.wait == null || (memo!.wait!.isRunning)) {
+    if (memo?.wait == null || memo!.wait!.isRunning) {
       return;
     }
 
@@ -118,7 +106,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       (memos) =>
           memos.map((e) => e.id == id ? e.resumeWaiting(now) : e).toList(),
     );
-    await _scheduleUnlock(id, notification);
   }
 
   /// 待機の計測を止める。待機画面を離れたときに呼ぶ。
@@ -131,34 +118,15 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
     if (memo?.wait?.isRunning != true) {
       return;
     }
-    final notifications = _notifications;
 
     await _mutate(
       (memos) =>
           memos.map((e) => e.id == id ? e.pauseWaiting(now) : e).toList(),
     );
-    await notifications.cancelUnlock(id);
-  }
-
-  /// 進んでいる待機の解錠予定時刻に通知を予約する。
-  Future<void> _scheduleUnlock(
-    String id,
-    UnlockNotificationContent notification,
-  ) async {
-    final unlockAt = _find(id)?.scheduledUnlockAt(_now);
-    if (unlockAt == null) {
-      return;
-    }
-    await _notifications.scheduleUnlock(
-      memoId: id,
-      unlockAt: unlockAt,
-      content: notification,
-    );
   }
 
   /// 待機をやめてロック中に戻す。計測はリセットされる。
   Future<void> cancelWaiting(String id) async {
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.cancelWaiting() : e).toList(),
     );
@@ -172,7 +140,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       return;
     }
 
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) =>
           memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),
@@ -189,25 +156,9 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       return;
     }
 
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) => memos.map((e) => e.id == id ? e.decline(now) : e).toList(),
     );
-  }
-
-  /// 問いを差し替える。解錠中のメモだけが対象。
-  Future<bool> editQuestions(String id, List<String> questions) async {
-    final memo = _find(id);
-    if (memo == null || !memo.lockStateAt(_now).canRead) {
-      return false;
-    }
-
-    await _mutate(
-      (memos) => memos
-          .map((e) => e.id == id ? e.withQuestions(questions) : e)
-          .toList(),
-    );
-    return true;
   }
 
   /// 待機時間を1段階のばす。いちばん長いものなら何もせず null を返す。
@@ -242,7 +193,6 @@ class MemoListNotifier extends AsyncNotifier<List<Memo>> {
       return;
     }
 
-    await _notifications.cancelUnlock(id);
     await _mutate(
       (memos) =>
           memos.map((e) => e.id == id ? e.markUnlocked(now) : e).toList(),

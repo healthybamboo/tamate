@@ -76,11 +76,6 @@ abstract class UnlockRule {
   /// 待機時間を伸ばす提案から使う。
   UnlockRule withWaitDuration(Duration duration) => this;
 
-  /// 問いを [questions] に差し替えたルール。
-  ///
-  /// 問いを持たないルールは自分をそのまま返す。
-  UnlockRule withQuestions(List<String> questions) => this;
-
   Map<String, dynamic> toJson();
 }
 
@@ -173,10 +168,6 @@ final class QuestionUnlockRule extends UnlockRule {
   Duration? get expectedWait => null;
 
   @override
-  UnlockRule withQuestions(List<String> questions) =>
-      QuestionUnlockRule(questions);
-
-  @override
   Map<String, dynamic> toJson() => {'type': typeName, 'questions': questions};
 
   @override
@@ -248,11 +239,6 @@ final class AllOfUnlockRule extends UnlockRule {
   @override
   UnlockRule withWaitDuration(Duration duration) => AllOfUnlockRule([
         for (final rule in rules) rule.withWaitDuration(duration),
-      ]);
-
-  @override
-  UnlockRule withQuestions(List<String> questions) => AllOfUnlockRule([
-        for (final rule in rules) rule.withQuestions(questions),
       ]);
 
   @override

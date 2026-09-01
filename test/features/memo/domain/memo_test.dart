@@ -304,11 +304,13 @@ void main() {
       expect(declined.lockStateAt(at), const MemoLocked());
     });
 
-    test('問いは後から差し替えられる', () {
-      final edited = questionMemo().withQuestions(['育てた問い']);
+    test('解錠のしかたは後から差し替えられる', () {
+      final edited = questionMemo().withUnlockRule(
+        const QuestionUnlockRule(['育てた問い']),
+      );
 
       expect(edited.unlockRule.questions, ['育てた問い']);
-      expect(edited.unlockRule.expectedWait, const Duration(minutes: 3));
+      expect(edited.unlockRule.expectedWait, isNull);
     });
 
     test('JSON を往復しても引き返した記録が残る', () {

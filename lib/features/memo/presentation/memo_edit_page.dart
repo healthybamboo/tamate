@@ -26,23 +26,19 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _bodyController;
 
-  /// 新規作成時に選んでいる解錠のしかた。作成後は変更できない。
-  UnlockKind _kind = UnlockKind.wait;
+  /// 選んでいる解錠のしかた。解錠中なら編集でも変えられる。
+  late UnlockKind _kind;
 
-  /// 新規作成時に選んでいる待機時間。作成後は変更できない。
-  Duration _waitDuration = UnlockPolicy.defaultWait;
+  /// 選んでいる待機時間。
+  late Duration _waitDuration;
 
-  /// 登録する問い。問いだけは解錠中なら後からも直せる。
+  /// 登録する問い。
   late List<String> _questions;
 
   /// 生成した4桁のコードを本文に入れたか。保存すると読めなくなる。
   bool _generatedCode = false;
 
   bool get _isNew => widget.memoId == null;
-
-  /// 問いの編集欄を出すか。
-  bool get _showQuestions =>
-      _isNew ? _kind.hasQuestions : _questions.isNotEmpty;
 
   @override
   void initState() {
@@ -51,6 +47,15 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
     _titleController = TextEditingController(text: memo?.title ?? '');
     _bodyController = TextEditingController(text: memo?.body ?? '');
     _questions = [...?memo?.unlockRule.questions];
+
+    // 編集では今の設定を初期値にする。解錠中なら待機時間も問いも変えられる。
+    final rule = memo?.unlockRule;
+    _kind = switch ((rule?.expectedWait != null, _questions.isNotEmpty)) {
+      (true, true) => UnlockKind.waitAndQuestion,
+      (false, true) => UnlockKind.question,
+      _ => UnlockKind.wait,
+    };
+    _waitDuration = rule?.expectedWait ?? UnlockPolicy.defaultWait;
   }
 
   @override
@@ -71,7 +76,7 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
         if (question.trim().isNotEmpty) question.trim(),
     ];
 
-    if (_kind.hasQuestions && questions.isEmpty && _isNew) {
+    if (_kind.hasQuestions && questions.isEmpty) {
       _notify(l10n.questionsRequired);
       return;
     }
@@ -87,15 +92,12 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
         id: widget.memoId!,
         title: title,
         body: body,
+        unlockRule: _buildRule(questions),
       );
       if (!saved) {
         // 入力している間に閲覧可能時間が切れた場合。
         _leave(message: l10n.editRejectedRelocked);
         return;
-      }
-      if (_showQuestions) {
-        // 問いは育てていくものなので、解錠中なら直せる。
-        await notifier.editQuestions(widget.memoId!, questions);
       }
     }
     _leave();
@@ -174,46 +176,42 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 16),
-            if (_isNew) ...[
-              _UnlockKindField(
-                value: _kind,
-                onChanged: (value) => setState(() => _kind = value),
+            _UnlockKindField(
+              value: _kind,
+              onChanged: (value) => setState(() => _kind = value),
+            ),
+            const SizedBox(height: 16),
+            if (_kind.hasWait) ...[
+              _WaitDurationField(
+                value: _waitDuration,
+                onChanged: (value) => setState(() => _waitDuration = value),
               ),
               const SizedBox(height: 16),
-              if (_kind.hasWait) ...[
-                _WaitDurationField(
-                  value: _waitDuration,
-                  onChanged: (value) => setState(() => _waitDuration = value),
-                ),
-                const SizedBox(height: 16),
-              ],
             ],
-            if (_showQuestions) ...[
+            if (_kind.hasQuestions) ...[
               QuestionField(
                 questions: _questions,
                 onChanged: (value) => setState(() => _questions = value),
               ),
               const SizedBox(height: 16),
             ],
-            if (_isNew) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _generateCode,
-                  icon: const Icon(Icons.pin_outlined),
-                  label: Text(l10n.generateCodeAction),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _generateCode,
+                icon: const Icon(Icons.pin_outlined),
+                label: Text(l10n.generateCodeAction),
+              ),
+            ),
+            if (_generatedCode)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  l10n.generateCodeNotice,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-              if (_generatedCode)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    l10n.generateCodeNotice,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-              const SizedBox(height: 16),
-            ],
+            const SizedBox(height: 16),
             TextField(
               controller: _bodyController,
               decoration: InputDecoration(
@@ -232,7 +230,7 @@ class _MemoEditPageState extends ConsumerState<MemoEditPage> {
   }
 }
 
-/// 解錠のしかた。作成時に選び、あとから変えられない。
+/// 解錠のしかた。解錠中なら後から変えられる。
 enum UnlockKind {
   wait(hasWait: true, hasQuestions: false),
   waitAndQuestion(hasWait: true, hasQuestions: true),
