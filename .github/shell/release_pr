@@ -1,0 +1,52 @@
+#!/bin/bash
+# リリース用のプルリクエストを作る。
+#
+# release/<version> から release/<platform> への PR を作る。この PR ができると
+# Codemagic がビルドを始める。中身を確かめてからマージする。
+
+set -euo pipefail
+
+get_pr_template_path() {
+    local current_dir
+    current_dir="$(dirname "$(realpath "$0")")"
+    echo "$current_dir/template/release_template.md"
+}
+
+# 同じ宛先に開いている PR を閉じる。
+#
+# デプロイ用ブランチに PR が複数あると、どれをマージすべきか分からなくなる。
+# 新しいリリースは古いものを含んでいるので、古い方を閉じてよい。
+close_existing_pr() {
+    local target=$1
+
+    gh pr list --state open --base "release/$target" --json number --jq '.[].number' |
+        xargs -I {} gh pr close {} --comment "新しいリリースに置き換えました"
+}
+
+create_release_pr() {
+    local release_version=$1
+    local assignee=$2
+    local reviewer=$3
+    local target=$4
+
+    gh pr create \
+        --base "release/$target" \
+        --head "release/$release_version" \
+        --title "[リリース][$target] version: $release_version" \
+        --assignee "$assignee" \
+        --reviewer "$reviewer" \
+        --label "リリース,$target" \
+        --body-file "$(get_pr_template_path)"
+}
+
+release_version=${1:?release_version is required}
+assignee=${2:?assignee is required}
+reviewer=${3:?reviewer is required}
+target=${4:?target is required}
+
+echo "リリースの PR を作ります"
+echo "  version : $release_version"
+echo "  target  : $target"
+
+close_existing_pr "$target"
+create_release_pr "$release_version" "$assignee" "$reviewer" "$target"
