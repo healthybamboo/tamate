@@ -335,8 +335,9 @@ class _WaitingView extends StatelessWidget {
     final unlockAt = left == null ? null : now.add(left);
 
     return _CenteredColumn(
+      padding: const EdgeInsets.symmetric(vertical: 32),
       children: [
-        TamateBox(size: 132, progress: _progress),
+        TamateSea(progress: _progress),
         const SizedBox(height: 24),
         Text(l10n.stateWaiting, style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
@@ -619,14 +620,15 @@ class _OpenHistory extends StatelessWidget {
 }
 
 class _CenteredColumn extends StatelessWidget {
-  const _CenteredColumn({required this.children});
+  const _CenteredColumn({required this.children, this.padding});
 
   final List<Widget> children;
+  final EdgeInsets? padding;
 
   @override
   Widget build(BuildContext context) => Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
+          padding: padding ?? const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: children,

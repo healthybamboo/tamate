@@ -113,3 +113,155 @@ class _TamateBoxPainter extends CustomPainter {
       old.progress != progress ||
       old.open != open;
 }
+
+/// 待っている間の絵。箱が少しずつ海に沈んでいく。
+///
+/// 進み具合をそのまま輪で見せると、ただのタイマーになってしまう。竜宮へ下りていく
+/// 時間だと思えるように、[progress] を水位にしてある。波は止めない。
+class TamateSea extends StatefulWidget {
+  const TamateSea({super.key, required this.progress, this.height = 220});
+
+  /// 待った割合。時間で測れないルールでは null。
+  final double? progress;
+
+  /// 絵の高さ。幅は画面いっぱいに広げる。
+  final double height;
+
+  @override
+  State<TamateSea> createState() => _TamateSeaState();
+}
+
+class _TamateSeaState extends State<TamateSea>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _waves = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 7),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _waves.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return AnimatedBuilder(
+      animation: _waves,
+      builder: (context, _) => CustomPaint(
+        size: Size(double.infinity, widget.height),
+        painter: _TamateSeaPainter(
+          progress: widget.progress ?? 0,
+          phase: _waves.value,
+          box: scheme.primary,
+          water: scheme.primary,
+          surface: scheme.onSurface,
+        ),
+      ),
+    );
+  }
+}
+
+class _TamateSeaPainter extends CustomPainter {
+  _TamateSeaPainter({
+    required this.progress,
+    required this.phase,
+    required this.box,
+    required this.water,
+    required this.surface,
+  });
+
+  final double progress;
+  final double phase;
+  final Color box;
+  final Color water;
+  final Color surface;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 図案は 100 四方。海は横幅いっぱいに広げるので、大きさは高さから決める。
+    final unit = size.height * 0.62 / 100;
+    final center = Offset(size.width / 2, size.height * 0.36);
+
+    // 箱。沈んでいくので、少しだけ上に置いてある。
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 9 * unit
+      ..color = box;
+    canvas.drawCircle(center, 21 * unit, ring);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTRB(
+          center.dx - 34 * unit,
+          center.dy - 4.5 * unit,
+          center.dx + 34 * unit,
+          center.dy + 4.5 * unit,
+        ),
+        Radius.circular(4.5 * unit),
+      ),
+      Paint()..color = box,
+    );
+
+    // 水位。待つほど上がってきて、最後は箱を越える。
+    final level = size.height * (1.02 - 0.92 * progress.clamp(0.0, 1.0));
+    _paintWave(
+      canvas,
+      size,
+      level: level + 5 * unit,
+      amplitude: 3.4 * unit,
+      wavelength: size.width * 0.75,
+      shift: phase,
+      color: water.withValues(alpha: 0.20),
+    );
+    _paintWave(
+      canvas,
+      size,
+      level: level,
+      amplitude: 2.4 * unit,
+      wavelength: size.width * 0.45,
+      shift: -phase * 1.6,
+      color: water.withValues(alpha: 0.32),
+      surfaceColor: surface.withValues(alpha: 0.45),
+    );
+  }
+
+  void _paintWave(
+    Canvas canvas,
+    Size size, {
+    required double level,
+    required double amplitude,
+    required double wavelength,
+    required double shift,
+    required Color color,
+    Color? surfaceColor,
+  }) {
+    double heightAt(double x) =>
+        level + amplitude * math.sin(2 * math.pi * (x / wavelength + shift));
+
+    final path = Path()..moveTo(0, heightAt(0));
+    for (var x = 0.0; x <= size.width; x += 2) {
+      path.lineTo(x, heightAt(x));
+    }
+    final fill = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(fill, Paint()..color = color);
+
+    if (surfaceColor != null) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.height * 0.008
+          ..color = surfaceColor,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TamateSeaPainter old) =>
+      old.progress != progress || old.phase != phase || old.box != box;
+}
